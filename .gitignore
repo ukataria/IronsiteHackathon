@@ -3,3 +3,9 @@
 
 # Secrets
 .env
+
+# Evaluation outputs
+outputs/
+*.pyc
+__pycache__/
+.venv/
