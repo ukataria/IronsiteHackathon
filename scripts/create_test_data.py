@@ -61,11 +61,8 @@ def create_synthetic_scene(scene_id: int, num_frames: int = 5):
             x1, x2 = max(0, x - size//2), min(width, x + size//2)
             depth_map[y1:y2, x1:x2] = depth
 
-            # Add label
-            try:
-                draw.text((x - 20, y - size//2 - 20), f"{depth}m", fill=(0, 0, 0))
-            except:
-                pass
+            # Skip adding text labels - they confuse VLMs that can read text
+            # (VLMs will read the label instead of estimating depth)
 
         # Add some noise to depth
         noise = np.random.normal(0, 0.05, depth_map.shape).astype(np.float32)

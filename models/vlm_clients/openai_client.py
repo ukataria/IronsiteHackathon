@@ -51,13 +51,19 @@ class OpenAIVLMClient:
         # Default prompt
         if prompt_template is None:
             prompt = f"""You are analyzing an indoor scene image.
-What is the approximate distance in meters from the camera to the point at pixel coordinates ({u}, {v})?
+
+Please estimate the approximate distance in meters from the camera to the point at pixel coordinates ({u}, {v}).
 Pixel coordinates are measured from the top-left corner (origin at top-left).
 
-Please provide ONLY a single number representing the distance in meters.
+Even if you cannot determine the exact distance, please provide your best estimate based on:
+- Apparent size of objects
+- Perspective cues
+- Typical indoor scene dimensions
+
+Respond with ONLY a single number in meters (no explanation).
 Examples: "2.5" or "0.8" or "4.2"
 
-Your answer (single number only):"""
+Your distance estimate:"""
         else:
             prompt = prompt_template.format(u=u, v=v, **intrinsics) if intrinsics else prompt_template.format(u=u, v=v)
 
