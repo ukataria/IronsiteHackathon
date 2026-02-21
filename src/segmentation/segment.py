@@ -104,13 +104,19 @@ def detect_elements(
         target_sizes=[img.size[::-1]],
     )[0]
 
+    text_labels = results.get("text_labels", results.get("labels", []))
     detections = []
-    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+    for score, label, box in zip(results["scores"], text_labels, results["boxes"]):
+        label_str = label if isinstance(label, str) else str(label)
+        category = next(
+            (v for k, v in LABEL_CATEGORY_MAP.items() if k in label_str.lower()),
+            label_str.split()[0],
+        )
         detections.append({
-            "label": label,
-            "category": LABEL_CATEGORY_MAP.get(label, label),
+            "label": label_str,
+            "category": category,
             "score": float(score),
-            "box": [float(x) for x in box.tolist()],  # [x1, y1, x2, y2]
+            "box": [float(x) for x in box.tolist()],
         })
 
     log.info(f"{image_path.name}: {len(detections)} elements detected")
