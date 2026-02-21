@@ -50,26 +50,26 @@ def extract_nyu_samples(h5_file, output_dir, max_samples=100):
 
     with h5py.File(h5_file, 'r') as f:
         # Dataset structure:
-        # - images: (3, 640, 480, N) - RGB images
-        # - depths: (640, 480, N) - depth in meters
-        # - labels: (640, 480, N) - semantic labels
+        # - images: (N, 3, 640, 480) - RGB images
+        # - depths: (N, 640, 480) - depth in meters
+        # - labels: (N, 640, 480) - semantic labels
 
         images = f['images']
         depths = f['depths']
         labels = f['labels'] if 'labels' in f else None
 
-        num_samples = min(images.shape[3], max_samples)
+        num_samples = min(images.shape[0], max_samples)
 
-        print(f"Dataset contains {images.shape[3]} images")
+        print(f"Dataset contains {images.shape[0]} images")
         print(f"Extracting {num_samples} samples...")
 
         for i in tqdm(range(num_samples), desc="Extracting"):
-            # Extract RGB (convert from MATLAB format: C,H,W -> H,W,C)
-            rgb = images[:, :, :, i].transpose(1, 2, 0)
+            # Extract RGB (convert from MATLAB format: N,C,H,W -> H,W,C)
+            rgb = images[i].transpose(1, 2, 0)
             rgb = (rgb * 255).astype(np.uint8)
 
             # Extract depth
-            depth = depths[:, :, i]
+            depth = depths[i]
 
             # Save RGB as JPEG
             rgb_path = output_dir / "rgb" / f"{i:04d}.jpg"
@@ -86,7 +86,7 @@ def extract_nyu_samples(h5_file, output_dir, max_samples=100):
 
             # Save labels if available
             if labels is not None:
-                label = labels[:, :, i]
+                label = labels[i]
                 label_path = output_dir / "labels" / f"{i:04d}.npy"
                 np.save(label_path, label)
 
