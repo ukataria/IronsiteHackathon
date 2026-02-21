@@ -45,10 +45,16 @@ def load_data_yaml(yaml_path):
     base_dir = yaml_path.parent
     # If 'path' is specified, use it as base; otherwise use yaml's parent dir
     if "path" in data and data["path"]:
-        base_dir = Path(data["path"])
-        if not base_dir.is_absolute():
-            base_dir = yaml_path.parent / base_dir
-        base_dir = base_dir.resolve()
+        candidate = Path(data["path"])
+        if not candidate.is_absolute():
+            candidate = yaml_path.parent / candidate
+        candidate = candidate.resolve()
+        # Use the path from yaml only if it actually exists;
+        # otherwise fall back to yaml's parent dir (handles cross-platform moves)
+        if candidate.exists():
+            base_dir = candidate
+        else:
+            print(f"  Warning: path '{data['path']}' in {yaml_path.name} not found, using {base_dir} instead")
 
     data["_base_dir"] = base_dir
     data["_yaml_path"] = yaml_path
@@ -117,27 +123,36 @@ def merge_datasets(yaml_paths, output_dir):
         for ds_idx, data in enumerate(datasets):
             base_dir = data["_base_dir"]
             remap = data["_remap"]
+            yaml_dir = data["_yaml_path"].parent
 
             # Resolve the split's image directory
-            split_key = "val" if split == "valid" and "val" not in data and "valid" not in data else split
-            img_dir_rel = data.get(split_key) or data.get("val" if split == "valid" else split)
+            # data.yaml uses "val" for validation, but we iterate with "valid"
+            img_dir_rel = data.get(split) or data.get("val" if split == "valid" else split)
             if img_dir_rel is None:
                 continue
 
-            img_dir = Path(base_dir) / img_dir_rel
-            if not img_dir.exists():
-                # Try common alternatives
-                for alt in [split, f"{split}/images"]:
-                    alt_path = base_dir / alt
-                    if alt_path.exists():
-                        img_dir = alt_path
-                        break
+            # Try multiple base directories in case of cross-platform moves
+            candidates = [
+                Path(base_dir) / img_dir_rel,
+                yaml_dir / img_dir_rel,
+                yaml_dir / split / "images",
+                yaml_dir / split,
+            ]
 
-            if not img_dir.exists():
+            img_dir = None
+            for c in candidates:
+                if c.exists() and any(c.iterdir()):
+                    img_dir = c
+                    break
+
+            if img_dir is None:
                 continue
 
             # Infer labels dir from images dir
             lbl_dir = Path(str(img_dir).replace("/images", "/labels").replace("\\images", "\\labels"))
+            if not lbl_dir.exists():
+                # Try sibling labels dir
+                lbl_dir = img_dir.parent / "labels"
 
             for img_file in img_dir.iterdir():
                 if img_file.suffix.lower() not in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}:
