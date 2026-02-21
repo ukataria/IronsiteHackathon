@@ -1,234 +1,239 @@
-# CLAUDE.md — Ghost Blueprint | Ironsite Spatial Intelligence Hackathon
+# CLAUDE.md — PreCheck | Code Style & Project Conventions
 
-## Project: Ghost Blueprint
+## What Is This Project
 
-"X-ray vision for construction." Take raw construction footage and overlay what the finished space will look like — drywall over studs, outlets in place, flooring down, fixtures installed — spatially accurate to the real 3D geometry. Toggle layers on and off. The future state of the building, ghosted onto reality.
+PreCheck: Spatial Anchor Calibration for Automated Construction Inspection.
+We teach VLMs to measure real-world dimensions from construction photos by using known-dimension objects (studs, rebar, CMU blocks) as calibration anchors, then inject those measurements into VLM prompts to enable accurate spatial inspection.
 
-## Team
+36-hour hackathon. 5 people. Demo Sunday morning.
 
-5 people. Parallelize aggressively. Interfaces between components are files (images, JSON, numpy arrays). If you're blocked on someone else's output, mock it and keep moving.
+## Philosophy
 
-## Core Philosophy
-
-- **Demo-driven development** — every decision should make the demo better. If it doesn't show well, it doesn't matter.
-- **Get ugly results fast, then iterate** — a janky overlay on real footage by Saturday morning beats a perfect pipeline that's not integrated until Sunday.
-- **Precompute everything for the demo** — real-time inference is a nice-to-have, precomputed hero frames are the priority.
-- **Save every intermediate output to disk** — frames, depth maps, segmentation masks, inpainted layers, API responses. Cache everything.
-- **Commit after every working milestone** — small checkpoints you can roll back to.
-
-## Tech Stack
-
-- **Python 3.11+** with uv (NEVER pip)
-- **GPU Compute**: Vast.ai for heavy inference (depth estimation, segmentation, inpainting)
-- **Depth Estimation**: Depth Anything V2
-- **Segmentation**: GroundedSAM / SAM2 (segment construction elements by text prompt)
-- **Inpainting**: SDXL Inpainting or Stable Diffusion Inpainting + ControlNet (depth-conditioned)
-- **LLM APIs**: Anthropic (Claude), Google (Gemini) — scene understanding, construction knowledge
-- **Compositing**: OpenCV, Pillow (alpha blending, layer management)
-- **Demo UI**: Streamlit
-- **Data**: 12 Ironsite construction video clips (~20 min each) in `data/raw/`
-- API keys loaded from `.env` via python-dotenv. NEVER hardcode keys.
+- **Demo-driven development.** If it doesn't improve the demo, don't build it.
+- **Get ugly results fast, then iterate.** A janky pipeline that produces numbers by Saturday morning beats a clean architecture that's not integrated until Sunday.
+- **Cache everything.** API responses, depth maps, detection results, calibration outputs. Never recompute what you already have. Never waste API credits on duplicate calls.
+- **Print intermediate results.** Every pipeline stage should print or save its output so you can debug by reading, not guessing.
+- **Commit after every working milestone.** Small checkpoints you can roll back to.
+- **Pre-compute for demo.** Real-time is a nice-to-have. Pre-baked hero results are the priority.
 
 ## Package Management
 
+- **ONLY use uv. NEVER pip.**
 - Install: `uv add package`
 - Run: `uv run python script.py` or `uv run streamlit run app.py`
-- NEVER use `pip install`, `uv pip install`, or `@latest`
+- Dev deps: `uv add --dev package`
+- FORBIDDEN: `pip install`, `uv pip install`, `@latest`
 
 ## Project Structure
 
 ```
-├── CLAUDE.md
+├── CLAUDE.md                  # This file — code style & conventions
+├── TECHNICAL.md               # Detailed technical approach & architecture
+├── README.md                  # Submission README
 ├── pyproject.toml
-├── .env                      # API keys (gitignored)
+├── .env                       # API keys (gitignored)
+├── .gitignore
+│
 ├── data/
-│   ├── raw/                  # Ironsite video clips
-│   ├── frames/               # Extracted keyframes (frame_XXXX.png)
-│   ├── depth/                # Depth maps (depth_XXXX.png + depth_XXXX.npy)
-│   ├── segments/             # Segmentation masks per element type
-│   ├── scenes/               # LLM scene descriptions (JSON)
-│   ├── overlays/             # Inpainted finished-state layers
-│   ├── composites/           # Final composited ghost overlays
-│   └── cache/                # Cached API responses
+│   ├── raw/                   # Source images & Ironsite footage
+│   ├── frames/                # Extracted video frames
+│   ├── depth/                 # Depth maps (.png vis + .npy arrays)
+│   ├── detections/            # Anchor detection outputs (JSON + annotated images)
+│   ├── calibrations/          # Scale calibration results (JSON)
+│   ├── measurements/          # Spatial measurements per image (JSON)
+│   ├── results/               # VLM responses for all 3 conditions (JSON)
+│   └── cache/                 # Cached API responses by prompt hash
+│
 ├── src/
-│   ├── video/                # Frame extraction, keyframe selection
-│   │   └── extract.py
-│   ├── depth/                # Depth estimation pipeline
+│   ├── __init__.py
+│   ├── anchors/               # Anchor detection (studs, rebar, CMU, boxes)
+│   │   ├── __init__.py
+│   │   └── detect.py
+│   ├── depth/                 # Depth estimation pipeline
+│   │   ├── __init__.py
 │   │   └── estimate.py
-│   ├── segmentation/         # GroundedSAM element segmentation
-│   │   └── segment.py
-│   ├── scene/                # LLM scene understanding
-│   │   ├── describe.py       # Generate structured scene descriptions
-│   │   └── predict.py        # Generate finished-state descriptions
-│   ├── inpaint/              # Inpainting pipeline
-│   │   ├── generate.py       # Generate finished-state overlays
-│   │   └── controlnet.py     # Depth-conditioned generation
-│   ├── composite/            # Layer compositing and ghost overlay
-│   │   └── blend.py
-│   ├── prompts.py            # ALL prompts as string constants
-│   ├── llm.py                # Thin API wrappers with caching
-│   └── utils.py              # Shared helpers (file I/O, image ops)
-├── app.py                    # Streamlit demo
-├── pipeline.py               # End-to-end: frame → depth → segment → describe → inpaint → composite
+│   ├── calibration/           # Pixel-to-real-world scale math
+│   │   ├── __init__.py
+│   │   └── calibrate.py
+│   ├── measurement/           # Spatial fact extraction
+│   │   ├── __init__.py
+│   │   └── measure.py
+│   ├── reid/                  # Object re-identification across views
+│   │   ├── __init__.py
+│   │   └── match.py
+│   ├── vlm/                   # VLM API wrappers + prompt injection
+│   │   ├── __init__.py
+│   │   ├── clients.py         # Thin wrappers for Claude, Gemini, GPT-5
+│   │   └── prompts.py         # ALL prompts as string constants
+│   └── utils.py               # Shared helpers (image I/O, caching, logging)
+│
+├── app.py                     # Streamlit demo
+├── pipeline.py                # End-to-end: image → anchors → depth → calibrate → measure → VLM
+├── evaluate.py                # Run 3-condition benchmark
 └── scripts/
-    ├── process_videos.py     # Batch process all clips on Vast.ai
-    └── select_hero_frames.py # Pick best frames for demo
+    ├── extract_frames.py      # Pull frames from Ironsite video clips
+    └── run_batch.py           # Batch process multiple images through pipeline
 ```
 
-## Pipeline Flow
+## Code Style
 
-```
-Raw Video Frame
-    │
-    ├──→ Depth Anything V2 ──→ Depth Map (.npy + visualization .png)
-    │
-    ├──→ GroundedSAM ──→ Segmentation Masks per element
-    │        (studs, floor, ceiling joists, pipes, wiring, openings)
-    │
-    ├──→ LLM Scene Understanding ──→ Structured Scene JSON
-    │        {current_state: [...], dimensions: {...}, phase: "framing"}
-    │
-    └──→ LLM Future State Prediction ──→ Finished State Description
-             {walls: "drywall, painted white", floor: "hardwood",
-              electrical: [{type: "outlet", height: 12in, location: ...}]}
-                 │
-                 ▼
-         SDXL Inpainting (per element layer)
-         + ControlNet depth conditioning
-                 │
-                 ▼
-         Overlay Layers (drywall, electrical, flooring, ceiling, fixtures)
-                 │
-                 ▼
-         Alpha Compositing ──→ Final Ghost Blueprint Frame
-         (adjustable transparency per layer)
-```
-
-## Work Split
-
-- **Person 1 (Video + Depth)**: Frame extraction, keyframe selection, Depth Anything V2 on Vast.ai. Delivers: `data/frames/`, `data/depth/`
-- **Person 2 (Segmentation + Scene)**: GroundedSAM segmentation, LLM scene descriptions. Delivers: `data/segments/`, `data/scenes/`
-- **Person 3 (Inpainting)**: SDXL inpainting pipeline, ControlNet depth conditioning, prompt engineering for realistic results. Delivers: `data/overlays/`
-- **Person 4 (Compositing)**: Alpha blending engine, layer management, frame-to-frame consistency. Delivers: `data/composites/`
-- **Person 5 (Frontend + Demo)**: Streamlit app, interactive controls, demo video recording, README. Delivers: `app.py`, video, docs
-
-Interface contract: everyone reads/writes files to the shared `data/` directories. Use consistent naming: `{clip_id}_frame_{XXXX}` everywhere.
-
-## Code Rules
-
-- Type hints on all function signatures
-- Docstrings on public functions (one-liner is fine)
-- snake_case functions/variables, PascalCase classes, UPPER_SNAKE_CASE constants
-- Keep functions under 30 lines — split if longer
-- Early returns over nested ifs
-- f-strings for formatting
+### Python Basics
+- **Python 3.11+**
+- Type hints on ALL function signatures, no exceptions
+- Docstrings on all public functions (one-liner is fine for hackathon)
+- snake_case for functions and variables
+- PascalCase for classes
+- UPPER_SNAKE_CASE for constants
+- f-strings for all string formatting
 - Line length: 88 chars max
 
-## LLM Patterns
+### Function Design
+- Keep functions under 30 lines. If longer, split.
+- Early returns over nested ifs. Always.
+- One function, one job. No god functions.
+- Prefix handler functions with `handle_`
+- Prefix helper functions descriptively: `compute_`, `extract_`, `detect_`, `format_`
 
 ```python
-# All prompts in src/prompts.py
-SCENE_DESCRIBE_PROMPT = """Analyze this construction scene. Given the image and depth map...
-Return JSON: {current_elements: [...], dimensions: {...}, construction_phase: "..."}"""
+# GOOD
+def compute_scale_factor(anchor_pixels: int, anchor_real_inches: float) -> float:
+    """Compute pixels-to-inches conversion from a known anchor."""
+    if anchor_pixels <= 0:
+        return 0.0
+    return anchor_real_inches / anchor_pixels
 
-FUTURE_STATE_PROMPT = """Given this construction scene in {phase} phase...
-Describe the finished state. Return JSON: {walls: "...", floor: "...", electrical: [...]}"""
+# BAD
+def do_stuff(data):
+    # 80 lines of untyped chaos
+    ...
 ```
 
-- Always cache responses: `data/cache/{prompt_hash}.json`
-- Check cache before every API call — never waste credits
-- Log token usage on every call
-- Retry once on failure, return error string, don't crash
-- Use `asyncio.gather()` to call multiple APIs in parallel
+### Constants & Configuration
+- All known construction dimensions go in a constants file or at the top of the relevant module
+- All prompts go in `src/vlm/prompts.py` as string constants
+- API keys from `.env` via `python-dotenv`, NEVER hardcoded
 
-## Inpainting Guidelines
+```python
+# src/vlm/prompts.py
+INSPECTION_SYSTEM_PROMPT = """You are a construction inspection AI..."""
 
-- Inpaint one element layer at a time (studs→drywall, subfloor→hardwood, etc.)
-- Use segmentation mask to constrain inpainting region
-- Use depth map as ControlNet conditioning for spatial accuracy
-- Iterate on prompts — construction-specific details matter ("smooth drywall with latex paint" not just "wall")
-- Save every generated layer separately for compositing
-- If a result looks bad, regenerate with a different seed — don't waste time debugging the model
+SPATIAL_CONTEXT_TEMPLATE = """
+CALIBRATED SPATIAL MEASUREMENTS:
+{measurements}
 
-## Compositing Rules
+CONSTRUCTION STANDARDS:
+{standards}
 
-- Each overlay layer has its own alpha channel
-- Default ghost opacity: 0.4 (translucent enough to see construction underneath)
-- Use a subtle color tint (light blue) on overlay layers to distinguish from real footage
-- Layers must respect depth ordering — closer surfaces overlay farther ones
-- For video consistency: if doing multiple frames, use same random seeds and similar prompts
-
-## Streamlit Demo Structure
-
-```
-┌─────────────────────────────────────────────┐
-│  Ghost Blueprint — X-Ray Vision for         │
-│  Construction                               │
-├──────────────┬──────────────────────────────┤
-│ Controls     │  Main View                   │
-│              │  ┌──────────────────────────┐ │
-│ □ Drywall    │  │                          │ │
-│ □ Electrical │  │   Video frame with       │ │
-│ □ Flooring   │  │   ghost overlay          │ │
-│ □ Ceiling    │  │                          │ │
-│ □ Fixtures   │  │                          │ │
-│              │  └──────────────────────────┘ │
-│ Opacity ───○ │                              │
-│              │  [Before] [Ghost] [Side by   │
-│ Frame ────○  │   side]                      │
-│              │                              │
-│ [▶ Play]     │  Scene Analysis:             │
-│              │  "Framing phase, north wall, │
-│              │   12x14 ft room..."          │
-└──────────────┴──────────────────────────────┘
+Analyze this construction scene for inspection readiness.
+"""
 ```
 
-- Sidebar: layer toggles, opacity slider, frame selector
-- Main area: video frame with overlay
-- View modes: original only, ghost only, side-by-side, overlay
-- Below: LLM scene description + finished state description
-- Cache everything with @st.cache_data — demo must feel snappy
+```python
+# Constants for known anchor dimensions
+ANCHOR_DIMENSIONS: dict[str, float] = {
+    "stud_face_width": 3.5,       # 2x4 face in inches
+    "stud_depth": 1.5,            # 2x4 depth in inches
+    "cmu_length": 15.625,         # CMU block length in inches
+    "cmu_height": 7.625,          # CMU block height in inches
+    "rebar_4_diameter": 0.5,      # #4 rebar in inches
+    "rebar_5_diameter": 0.625,    # #5 rebar in inches
+    "door_rough_width": 38.5,     # Standard door rough opening
+    "door_rough_height": 82.5,    # Standard door rough opening
+}
+```
 
-## Hero Frames Strategy
+### Data Flow
+- Every pipeline stage reads files from one `data/` subdirectory and writes to another
+- Use consistent naming: `{image_id}_suffix.ext` everywhere
+- JSON for structured data, .npy for numpy arrays, .png for images
+- Every function that calls an API should accept a `cache_key` parameter
 
-Pick 5-8 "hero frames" from the Ironsite footage that:
-- Show clear construction elements (studs, framing, rough openings)
-- Have good lighting and camera angle
-- Represent different stages or areas
-- Are visually interesting
+```python
+# GOOD: clear data flow
+def detect_anchors(image_path: str, output_dir: str) -> dict:
+    """Detect known-dimension objects. Saves annotated image + JSON."""
+    image_id = Path(image_path).stem
+    # ... detection logic ...
+    save_json(results, f"{output_dir}/{image_id}_anchors.json")
+    save_image(annotated, f"{output_dir}/{image_id}_annotated.png")
+    return results
+```
 
-Spend extra time making these overlays perfect. The demo video uses these. Live demo can fall back to these if real-time processing is slow.
+### Caching Pattern
+```python
+import hashlib
+import json
+from pathlib import Path
 
-## Git Discipline
+CACHE_DIR = Path("data/cache")
 
-- Commit after every working milestone
-- Commit messages: short, present tense ("add depth pipeline", "wire up inpainting", "build streamlit app")
+def cached_api_call(prompt: str, image_b64: str | None = None) -> str:
+    """Call API with disk caching. Never waste credits on duplicates."""
+    cache_key = hashlib.md5(f"{prompt}{image_b64 or ''}".encode()).hexdigest()
+    cache_path = CACHE_DIR / f"{cache_key}.json"
+    
+    if cache_path.exists():
+        return json.loads(cache_path.read_text())["response"]
+    
+    response = _call_api(prompt, image_b64)  # actual API call
+    cache_path.write_text(json.dumps({"prompt": prompt, "response": response}))
+    return response
+```
+
+### Error Handling
+- Never crash the pipeline. Catch, log, return a fallback.
+- API errors: retry once, then return error string
+- Detection failures: return empty results, don't block downstream
+- Log with context: which image, which stage, what failed
+
+```python
+try:
+    response = call_claude(prompt, image_b64, cache_key=image_id)
+except Exception as e:
+    logger.error(f"VLM call failed for {image_id}: {e}")
+    response = "ERROR: VLM call failed"
+```
+
+### Saving Intermediate Outputs
+- EVERY pipeline stage saves its output visually for debugging
+- Depth maps: save both the .npy array AND a colorized .png visualization
+- Detections: save annotated images with bounding boxes drawn
+- Measurements: save images with measurement lines and labels overlaid
+- This is non-negotiable — you will need to debug visually at 2am
+
+## Streamlit Conventions
+
+- Keep `app.py` thin — import logic from `src/`
+- Use `st.cache_data` for any expensive computation
+- Use `st.columns` for side-by-side comparisons
+- Use `st.sidebar` for controls (image selection, condition toggle)
+- Pre-compute demo results and load from disk — don't run inference live unless you have to
+
+## Git
+
+- Commit messages: short, present tense ("add anchor detection", "wire up calibration", "build streamlit demo")
 - Never mention co-authored-by or tooling in commits
-- Branch: just use main, it's a hackathon
-- `.gitignore`: data/, .env, __pycache__, *.pyc, .venv/
+- One logical change per commit
+- Branch: just use main
+- `.gitignore`: data/, .env, __pycache__, *.pyc, .venv/, *.npy (large files)
 
-## Risk Mitigation
+## Team Interfaces
 
-1. **Inpainting looks bad**: Fall back to simpler overlays — colored transparent shapes showing where elements will go (blue rectangles for drywall, yellow dots for outlets). Less pretty but still communicates the concept.
-2. **Depth estimation is inaccurate**: Use it directionally (relative depth) rather than absolute. The overlay just needs to look right, not be survey-grade accurate.
-3. **Frame-to-frame consistency is poor**: Don't try video — demo with individual frames and a frame selector slider. Still impressive.
-4. **Running out of time**: Prioritize 3 perfect hero frames over 100 mediocre ones. A polished demo of 3 frames beats a broken demo of the full video.
-5. **Vast.ai goes down**: Have a lightweight fallback pipeline that runs on CPU with smaller models.
+Each person owns a pipeline stage. Interfaces between stages are files in `data/`.
+If you're blocked on someone else's output, create mock data in the expected format and keep building.
+
+| Person | Owns | Reads from | Writes to |
+|--------|------|-----------|-----------|
+| P1 - Anchor Detection | `src/anchors/` | `data/frames/` | `data/detections/` |
+| P2 - Depth + Calibration | `src/depth/`, `src/calibration/` | `data/frames/`, `data/detections/` | `data/depth/`, `data/calibrations/` |
+| P3 - VLM + Evaluation | `src/vlm/`, `evaluate.py` | `data/measurements/` | `data/results/` |
+| P4 - ReID + Multi-view | `src/reid/`, `src/measurement/` | `data/detections/`, `data/calibrations/` | `data/measurements/` |
+| P5 - Demo + Docs | `app.py`, README | `data/results/`, `data/composites/` | Final demo |
 
 ## When Stuck
 
-1. Is the demo still working? If yes, keep building. If no, revert to last commit.
-2. Can you precompute it? Pre-baked results are fine for the demo.
+1. Is the demo still working? If yes, keep going. If no, revert.
+2. Can you pre-compute it? Pre-baked results are fine for presentation.
 3. Is this feature visible in the 3-5 min video? If not, skip it.
-4. Would a simpler version still look good? Do that first, upgrade if time allows.
-5. Sleep > debugging at 4am.
-
-## Deliverables Checklist
-
-- [ ] GitHub repo (clean, documented)
-- [ ] README with approach, process, findings
-- [ ] 3-5 min demo video
-- [ ] Optional PDF report
-- [ ] Streamlit app runs locally from repo
-- [ ] At least 5 hero frames with polished ghost overlays
-- [ ] Side-by-side comparison: raw model output vs Ghost Blueprint
+4. Would a simpler version still demonstrate the technique? Do that first.
+5. Sleep > debugging at 4am with diminishing returns.
