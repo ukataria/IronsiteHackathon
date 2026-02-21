@@ -30,8 +30,17 @@ from ultralytics import YOLO
 def load_data_yaml(yaml_path):
     """Load a data.yaml and resolve paths relative to its location."""
     yaml_path = Path(yaml_path).resolve()
-    with open(yaml_path, "r") as f:
-        data = yaml.safe_load(f)
+    
+    # Try multiple encodings in case file has non-UTF-8 characters
+    for encoding in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
+        try:
+            with open(yaml_path, "r", encoding=encoding) as f:
+                data = yaml.safe_load(f)
+            break
+        except (UnicodeDecodeError, yaml.YAMLError):
+            continue
+    else:
+        raise ValueError(f"Could not decode {yaml_path} with any supported encoding")
 
     base_dir = yaml_path.parent
     # If 'path' is specified, use it as base; otherwise use yaml's parent dir
