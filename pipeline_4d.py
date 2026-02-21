@@ -187,65 +187,42 @@ def load_sam2_pipeline(device: str) -> tuple:
     return sam2_model, sam2_processor, detector_pipe
 
 
-def mask_frame(
-    frame_path: Path,
+def _apply_sam2_mask(
+    image: Image.Image,
+    detections: list,
     masked_path: Path,
     sam2_model,
     sam2_processor,
-    detector_pipe,
     device: str,
-    score_threshold: float = 0.15,
-) -> Path:
-    """
-    Detect dynamic objects with OWLv2, then mask precisely with SAM2.
-    Fills masked pixels with black. Caches result.
-    Returns masked_path on success, frame_path on failure/no detections.
-    """
-    if masked_path.exists():
-        return masked_path
+) -> None:
+    """Run SAM2 on pre-detected boxes and save masked image to masked_path."""
+    if not detections:
+        image.save(str(masked_path))
+        return
 
-    try:
-        image = Image.open(frame_path).convert("RGB")
-        detections = detector_pipe(
-            image,
-            candidate_labels=DYNAMIC_OBJECT_LABELS,
-            threshold=score_threshold,
-        )
-        if not detections:
-            image.save(str(masked_path))
-            return masked_path
+    input_boxes = [
+        [d["box"]["xmin"], d["box"]["ymin"], d["box"]["xmax"], d["box"]["ymax"]]
+        for d in detections
+    ]
+    inputs = sam2_processor(
+        images=image,
+        input_boxes=[input_boxes],
+        return_tensors="pt",
+    ).to(device)
 
-        # Format: [image_batch [boxes [xmin, ymin, xmax, ymax]]] = 3 levels
-        input_boxes = [
-            [d["box"]["xmin"], d["box"]["ymin"], d["box"]["xmax"], d["box"]["ymax"]]
-            for d in detections
-        ]
-        inputs = sam2_processor(
-            images=image,
-            input_boxes=[input_boxes],  # wrap once for batch dim
-            return_tensors="pt",
-        ).to(device)
+    with torch.no_grad():
+        outputs = sam2_model(**inputs, multimask_output=False)
 
-        with torch.no_grad():
-            outputs = sam2_model(**inputs, multimask_output=False)
+    orig_h, orig_w = image.size[1], image.size[0]
+    raw_masks = outputs.pred_masks.float().squeeze(0)  # (N, 1, mH, mW)
+    resized = torch.nn.functional.interpolate(
+        raw_masks, size=(orig_h, orig_w), mode="bilinear", align_corners=False
+    )
+    combined = (resized.squeeze(1) > 0.0).any(dim=0).cpu().numpy()
 
-        # Interpolate masks back to original image size directly (avoids
-        # post_process_masks API differences across transformers versions)
-        orig_h, orig_w = image.size[1], image.size[0]  # PIL: (W, H)
-        raw_masks = outputs.pred_masks.float().squeeze(0)  # (N, 1, mH, mW)
-        resized = torch.nn.functional.interpolate(
-            raw_masks, size=(orig_h, orig_w), mode="bilinear", align_corners=False
-        )
-        combined = (resized.squeeze(1) > 0.0).any(dim=0).cpu().numpy()
-
-        frame_arr = np.array(image)
-        frame_arr[combined] = 0
-        Image.fromarray(frame_arr).save(str(masked_path))
-        return masked_path
-
-    except Exception as e:
-        print(f"    [warn] masking failed for {frame_path.name}: {e}")
-        return frame_path
+    frame_arr = np.array(image)
+    frame_arr[combined] = 0
+    Image.fromarray(frame_arr).save(str(masked_path))
 
 
 def mask_period_frames(
@@ -255,14 +232,52 @@ def mask_period_frames(
     sam2_processor,
     detector_pipe,
     device: str,
+    batch_size: int = 8,
+    score_threshold: float = 0.15,
 ) -> list[Path]:
-    """Apply SAM2 masking to all frames in a period. Returns masked frame paths."""
-    masked_paths = []
+    """
+    Mask dynamic objects in all frames for a period.
+    OWLv2 detection is batched across all frames in one GPU call.
+    SAM2 segmentation runs per-frame (variable box count per image).
+    Returns list of output paths (masked or original if masking failed).
+    """
+    # Separate already-cached frames from ones that need processing
+    to_process: list[tuple[Path, Path, Image.Image]] = []
+    result_map: dict[Path, Path] = {}
+
     for fp in frame_paths:
         out = masked_dir / fp.name
-        result = mask_frame(fp, out, sam2_model, sam2_processor, detector_pipe, device)
-        masked_paths.append(result)
-    return masked_paths
+        if out.exists():
+            result_map[fp] = out
+        else:
+            to_process.append((fp, out, Image.open(fp).convert("RGB")))
+
+    if to_process:
+        # Batch OWLv2 detection — one GPU pass for all uncached frames
+        images = [img for _, _, img in to_process]
+        try:
+            batch_detections = detector_pipe(
+                images,
+                candidate_labels=DYNAMIC_OBJECT_LABELS,
+                threshold=score_threshold,
+                batch_size=batch_size,
+            )
+        except Exception as e:
+            print(f"    [warn] OWLv2 batch detection failed: {e} — skipping masking")
+            for fp, _, _ in to_process:
+                result_map[fp] = fp
+            return [result_map[fp] for fp in frame_paths]
+
+        # SAM2 per-frame (boxes vary per image)
+        for (fp, out, image), detections in zip(to_process, batch_detections):
+            try:
+                _apply_sam2_mask(image, detections, out, sam2_model, sam2_processor, device)
+                result_map[fp] = out
+            except Exception as e:
+                print(f"    [warn] SAM2 failed for {fp.name}: {e}")
+                result_map[fp] = fp
+
+    return [result_map[fp] for fp in frame_paths]
 
 
 # ── Stage 3: Depth Estimation (Fallback Point Clouds) ─────────────────────────
@@ -460,18 +475,42 @@ def run_colmap(
 # ── Stage 5: 3D Gaussian Splatting ────────────────────────────────────────────
 
 def _find_gsplat_trainer() -> Optional[Path]:
-    """Locate gsplat's simple_trainer.py after installation."""
+    """Locate gsplat's simple_trainer.py, downloading from GitHub if needed."""
+    import urllib.request
+
     try:
         import gsplat
         gsplat_pkg_dir = Path(gsplat.__file__).parent
+        version = getattr(gsplat, "__version__", "main")
         candidates = [
+            # editable / repo install: repo_root/examples/simple_trainer.py
+            gsplat_pkg_dir.parent.parent / "examples" / "simple_trainer.py",
             gsplat_pkg_dir.parent / "examples" / "simple_trainer.py",
             gsplat_pkg_dir / "examples" / "simple_trainer.py",
             Path(sys.prefix) / "examples" / "simple_trainer.py",
+            # previously downloaded copy
+            Path(__file__).parent / "gsplat_simple_trainer.py",
         ]
         for c in candidates:
             if c.exists():
                 return c
+
+        # Not found locally — download from GitHub
+        local_path = Path(__file__).parent / "gsplat_simple_trainer.py"
+        tag = f"v{version}" if (version and version != "main") else "main"
+        urls = [
+            f"https://raw.githubusercontent.com/nerfstudio-project/gsplat/{tag}/examples/simple_trainer.py",
+            "https://raw.githubusercontent.com/nerfstudio-project/gsplat/main/examples/simple_trainer.py",
+        ]
+        for url in urls:
+            try:
+                print(f"  [info] Downloading simple_trainer.py from {url} ...")
+                urllib.request.urlretrieve(url, local_path)
+                print(f"  [saved] {local_path.name}")
+                return local_path
+            except Exception as e:
+                print(f"  [warn] Download failed ({url}): {e}")
+
     except ImportError:
         pass
     return None
