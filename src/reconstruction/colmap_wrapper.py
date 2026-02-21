@@ -69,6 +69,8 @@ def run_colmap_matcher(
         f"{matcher_type}_matcher",
         "--database_path",
         str(database_path),
+        "--SiftMatching.use_gpu",
+        "0",  # Disable GPU to avoid OpenGL context errors
     ]
 
     subprocess.run(cmd, check=True)
