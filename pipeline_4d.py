@@ -403,8 +403,8 @@ def run_colmap(
         print(f"  [cache] COLMAP sparse reconstruction already exists")
         return True
 
-    result = subprocess.run(["colmap", "--version"], capture_output=True)
-    if result.returncode != 0:
+    import shutil
+    if shutil.which("colmap") is None:
         print("  [warn] COLMAP not found — falling back to depth-based point clouds")
         print("         Install with: sudo apt-get install -y colmap")
         return False
