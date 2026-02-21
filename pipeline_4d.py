@@ -229,10 +229,16 @@ def mask_frame(
         with torch.no_grad():
             outputs = sam2_model(**inputs, multimask_output=False)
 
+        # Derive reshaped size from pixel_values when key is absent (fast processor)
+        if "reshaped_input_sizes" in inputs:
+            reshaped = inputs["reshaped_input_sizes"].cpu()
+        else:
+            _, _, h, w = inputs["pixel_values"].shape
+            reshaped = torch.tensor([[h, w]])
         masks = sam2_processor.post_process_masks(
             outputs.pred_masks.cpu(),
             inputs["original_sizes"].cpu(),
-            inputs["reshaped_input_sizes"].cpu(),
+            reshaped,
         )[0]
         combined = masks.squeeze(1).any(dim=0).numpy()
 
@@ -420,8 +426,7 @@ def run_colmap(
             "colmap", "feature_extractor",
             "--database_path", str(db_path),
             "--image_path", str(frame_dir),
-            "--ImageReader.camera_model", "SIMPLE_PINHOLE",
-            "--ImageReader.camera_mode", "1",
+            "--ImageReader.single_camera", "1",
             "--SiftExtraction.use_gpu", gpu_flag,
         ], check=True)
 
