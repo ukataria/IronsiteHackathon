@@ -535,7 +535,7 @@ for row in rows_of_frames:
                 unsafe_allow_html=True,
             )
             if src:
-                st.image(load_image_file(src), use_container_width=True)
+                st.image(load_image_file(src), width="stretch")
             st.markdown(
                 f'<div style="padding:6px 8px;display:flex;align-items:center;'
                 f'justify-content:space-between;font-size:0.68rem;">'
@@ -576,25 +576,25 @@ c1, c2, c3 = st.columns(3, gap="medium")
 with c1:
     st.markdown('<span class="il il-raw">① Raw Frame</span>', unsafe_allow_html=True)
     if src_path:
-        st.image(load_image_file(src_path), use_container_width=True)
+        st.image(load_image_file(src_path), width="stretch")
     else:
         st.caption("Frame not found.")
 
 with c2:
     st.markdown('<span class="il il-det">② Anchor Detection</span>', unsafe_allow_html=True)
     if annotated_path:
-        st.image(load_image_file(annotated_path), use_container_width=True)
+        st.image(load_image_file(annotated_path), width="stretch")
     elif depth_path:
-        st.image(load_image_file(depth_path), use_container_width=True)
+        st.image(load_image_file(depth_path), width="stretch")
     else:
         st.caption("Run pipeline to generate.")
 
 with c3:
     st.markdown('<span class="il il-meas">③ Measurements</span>', unsafe_allow_html=True)
     if measured_path:
-        st.image(load_image_file(measured_path), use_container_width=True)
+        st.image(load_image_file(measured_path), width="stretch")
     elif annotated_path:
-        st.image(load_image_file(annotated_path), use_container_width=True)
+        st.image(load_image_file(annotated_path), width="stretch")
     else:
         st.caption("Run pipeline to generate.")
 
