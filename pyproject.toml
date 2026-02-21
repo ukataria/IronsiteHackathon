@@ -10,11 +10,9 @@ dependencies = [
     "Pillow",
     "opencv-python",
     "python-dotenv",
-    # Anchor detection
+    # Anchor detection + depth estimation (GroundingDINO via transformers)
     "torch",
     "torchvision",
-    "groundingdino-py",
-    "segment-anything",
     # Depth estimation
     "transformers",
     "timm",

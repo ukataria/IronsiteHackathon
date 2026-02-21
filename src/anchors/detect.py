@@ -28,13 +28,13 @@ logger = setup_logger("anchors")
 # ---------------------------------------------------------------------------
 
 ANCHOR_TEXT_PROMPTS: dict[str, str] = {
-    "stud": "wooden stud . 2x4 lumber . wall framing member . vertical wood board",
-    "rebar": "rebar . steel reinforcement bar . metal rod . deformed steel bar",
-    "cmu": "concrete masonry unit . CMU block . cinder block . concrete block",
-    "electrical_box": "electrical box . outlet box . junction box . switch box",
-    "door": "door opening . door frame . rough opening . door jamb",
-    "hardhat": "hard hat . construction helmet . safety helmet",
-    "brick": "brick . masonry brick . clay brick",
+    "stud": "wood stud . vertical wood board . wall stud",
+    "rebar": "rebar . steel bar",
+    "cmu": "cinder block . concrete block",
+    "electrical_box": "electrical box . outlet box",
+    "door": "door frame . door opening",
+    "hardhat": "hard hat . helmet",
+    "brick": "brick",
 }
 
 # Combined prompt for single-pass detection of all anchors
@@ -60,7 +60,7 @@ def load_grounding_dino(device: str = "cpu") -> tuple[Any, Any]:
 
         model_id = "IDEA-Research/grounding-dino-base"
         logger.info(f"Loading GroundingDINO from {model_id}...")
-        _gdino_processor = AutoProcessor.from_pretrained(model_id)
+        _gdino_processor = AutoProcessor.from_pretrained(model_id, use_fast=False)
         _gdino_model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
         _gdino_model = _gdino_model.to(device)
         _gdino_model.eval()
@@ -113,7 +113,7 @@ def detect_anchors(
     image_path: str,
     output_dir: str,
     anchor_types: list[str] | None = None,
-    box_threshold: float = 0.35,
+    box_threshold: float = 0.15,
     text_threshold: float = 0.25,
     device: str = "cpu",
 ) -> dict:
@@ -150,17 +150,73 @@ def detect_anchors(
         with torch.no_grad():
             outputs = model(**inputs)
 
-        results = processor.post_process_grounded_object_detection(
-            outputs,
-            inputs.input_ids,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold,
-            target_sizes=[(h, w)],
-        )[0]
+        # Try new API first (no threshold args), fall back to old API
+        try:
+            results = processor.post_process_grounded_object_detection(
+                outputs,
+                inputs.input_ids,
+                target_sizes=[(h, w)],
+            )[0]
+        except TypeError:
+            results = processor.post_process_grounded_object_detection(
+                outputs,
+                inputs.input_ids,
+                box_threshold=box_threshold,
+                text_threshold=text_threshold,
+                target_sizes=[(h, w)],
+            )[0]
 
-        boxes_xyxy = results["boxes"].cpu().numpy()      # [N, 4] absolute pixels
-        scores = results["scores"].cpu().numpy()         # [N]
-        labels = results["labels"]                       # list[str]
+        boxes_xyxy = results["boxes"].cpu().numpy()                        # [N, 4] absolute pixels
+        scores = results["scores"].cpu().numpy()                         # [N]
+        labels = results.get("text_labels", results.get("labels", []))  # str labels, future-proof
+
+        # Log score distribution to help tune threshold
+        if len(scores) > 0:
+            logger.info(f"  Raw detections: {len(scores)} boxes, scores: max={scores.max():.3f} mean={scores.mean():.3f} min={scores.min():.3f}")
+        else:
+            logger.info("  Raw detections: 0 boxes returned by model")
+
+        # Filter by score threshold
+        keep = scores >= box_threshold
+        boxes_xyxy = boxes_xyxy[keep]
+        scores = scores[keep]
+        labels = [l for l, k in zip(labels, keep) if k]
+
+        # Filter by bounding box area — reject whole-scene and tiny noise detections
+        image_area = h * w
+        area_keep = []
+        for box in boxes_xyxy:
+            box_area = (box[2] - box[0]) * (box[3] - box[1])
+            frac = box_area / image_area
+            area_keep.append(0.005 <= frac <= 0.40)
+        area_keep_arr = np.array(area_keep)
+        boxes_xyxy = boxes_xyxy[area_keep_arr]
+        scores = scores[area_keep_arr]
+        labels = [l for l, k in zip(labels, area_keep) if k]
+        logger.info(f"  After area filter: {len(scores)} boxes remain")
+
+        # Aspect ratio sanity check per anchor type
+        # Studs are tall+narrow (height >> width), CMU blocks are ~2:1 wide, etc.
+        MAX_ASPECT_RATIOS: dict[str, tuple[float, float]] = {
+            "stud": (0.02, 0.8),    # width/height: full-height stud can be ~0.03
+            "cmu": (1.0, 6.0),      # roughly square to 2x wide
+            "brick": (1.5, 5.0),
+            "electrical_box": (0.3, 3.0),
+            "door": (0.1, 2.0),
+        }
+        ratio_keep = []
+        ratio_labels_classified = [_classify_label(str(l)) for l in labels]
+        for box, atype in zip(boxes_xyxy, ratio_labels_classified):
+            bw = box[2] - box[0]
+            bh = box[3] - box[1]
+            ratio = bw / bh if bh > 0 else 999
+            lo, hi = MAX_ASPECT_RATIOS.get(atype, (0.01, 100.0))
+            ratio_keep.append(lo <= ratio <= hi)
+        ratio_keep_arr = np.array(ratio_keep)
+        boxes_xyxy = boxes_xyxy[ratio_keep_arr]
+        scores = scores[ratio_keep_arr]
+        labels = [l for l, k in zip(labels, ratio_keep) if k]
+        logger.info(f"  After aspect ratio filter: {len(scores)} boxes remain")
 
     except Exception as e:
         logger.error(f"Detection failed for {image_id}: {e}")
