@@ -28,7 +28,7 @@ def predict_finished_state(scene_dict: dict, stem: str) -> dict:
         return load_json(out_path)
 
     scene_json_str = json.dumps(scene_dict, indent=2)
-    prompt = FUTURE_STATE_PROMPT.format(scene_json=scene_json_str)
+    prompt = FUTURE_STATE_PROMPT.replace("{scene_json}", scene_json_str)
     result = claude_text(prompt)
 
     if isinstance(result, str):
