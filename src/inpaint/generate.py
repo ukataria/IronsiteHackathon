@@ -1,4 +1,4 @@
-"""SDXL Inpainting pipeline — generate finished-state overlays per element layer."""
+"""SD 1.5 Inpainting pipeline — generate finished-state overlays per element layer."""
 from __future__ import annotations
 
 import logging
@@ -17,25 +17,24 @@ _inpaint_pipe = None
 
 
 def _get_pipe():
-    """Lazy-load SDXL Inpainting pipeline."""
+    """Lazy-load SD 1.5 Inpainting pipeline (~2GB, fits on constrained disks)."""
     global _inpaint_pipe
     if _inpaint_pipe is not None:
         return _inpaint_pipe
 
     import torch
-    from diffusers import StableDiffusionXLInpaintPipeline
+    from diffusers import StableDiffusionInpaintPipeline
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if device == "cuda" else torch.float32
 
-    log.info(f"Loading SDXL Inpainting on {device}")
-    _inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-        "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+    log.info(f"Loading SD 1.5 Inpainting on {device}")
+    _inpaint_pipe = StableDiffusionInpaintPipeline.from_pretrained(
+        "runwayml/stable-diffusion-inpainting",
         torch_dtype=dtype,
-        variant="fp16" if device == "cuda" else None,
     ).to(device)
     _inpaint_pipe.enable_attention_slicing()
-    log.info("SDXL Inpainting loaded.")
+    log.info("SD 1.5 Inpainting loaded.")
     return _inpaint_pipe
 
 
@@ -78,9 +77,9 @@ def inpaint_layer(
     image = PILImage.open(str(frame_path)).convert("RGB")
     mask = PILImage.open(str(mask_path)).convert("L")
 
-    # SDXL inpainting wants 1024x1024 — resize, inpaint, resize back
+    # SD 1.5 inpainting wants 512x512 — resize, inpaint, resize back
     orig_size = image.size
-    target_size = (1024, 1024)
+    target_size = (512, 512)
     image_resized = image.resize(target_size, PILImage.LANCZOS)
     mask_resized = mask.resize(target_size, PILImage.NEAREST)
 
