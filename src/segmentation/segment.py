@@ -122,12 +122,20 @@ def detect_elements(
     results = processor.post_process_grounded_object_detection(
         outputs,
         inputs.input_ids,
-        box_threshold=box_threshold,
-        text_threshold=text_threshold,
         target_sizes=[img.size[::-1]],
     )[0]
 
-    text_labels = results.get("text_labels", results.get("labels", []))
+    # Filter by threshold (newer transformers removed these args from post_process)
+    keep = results["scores"] >= box_threshold
+    results = {
+        "scores": results["scores"][keep],
+        "boxes": results["boxes"][keep],
+        "labels": [l for l, k in zip(
+            results.get("text_labels", results.get("labels", [])), keep
+        ) if k],
+    }
+
+    text_labels = results["labels"]
     detections = []
     for score, label, box in zip(results["scores"], text_labels, results["boxes"]):
         label_str = label if isinstance(label, str) else str(label)
