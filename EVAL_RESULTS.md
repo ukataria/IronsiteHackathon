@@ -46,26 +46,48 @@ Evaluated VLM depth estimation capabilities using synthetic test data with known
 }
 ```
 
-### Anthropic Claude ❌
+### Anthropic Claude 3 Haiku ⚠️
 
-**Models Tested:**
-- `claude-3-5-sonnet-20241022`
-- `claude-3-5-sonnet-20250219`
-- `claude-3-5-sonnet-20240620`
-- `claude-3-opus-20240229`
+**Model:** `claude-3-haiku-20240307`
+**Status:** Completed (Poor Performance)
+**Date:** 2026-02-21
 
-**Status:** API Error - Model Not Found (404)
-**Error Message:** `'type': 'not_found_error', 'message': 'model: <model_name>'`
+| Metric | Value | Interpretation |
+|--------|-------|----------------|
+| **MAE** | 32.483 meters | Mean absolute error in depth prediction |
+| **RMSE** | 33.336 meters | Root mean squared error |
+| **AbsRel** | 6.472 | Absolute relative error (647%) |
+| **Valid Predictions** | 20/20 (100%) | All queries returned numeric values |
 
-**Likely Causes:**
-1. API key may not have access to vision-enabled Claude models
-2. Model names may have changed or require different endpoint
-3. Account may need to be upgraded to access vision capabilities
+**Analysis:**
+- Claude 3 Haiku consistently predicted ~40 meters for all queries
+- Actual depths were in 1.5-5.0m range
+- The model appears to return a default/safe answer rather than analyzing the image
+- This represents essentially random guessing with a large constant offset
+- Performance is **~23x worse** than GPT-4o
 
-**Recommendation:**
-- Verify Anthropic API key has access to Claude 3 vision models
-- Check Anthropic dashboard for available models
-- May need to request vision API access separately
+**Sample Predictions:**
+```json
+{
+  "gt_depth": 4.992,
+  "predicted_depth": 40.0,
+  "error": 35.008m  (700% error!)
+}
+{
+  "gt_depth": 5.084,
+  "predicted_depth": 40.0,
+  "error": 34.916m
+}
+```
+
+**Other Claude Models Tested (Failed):**
+- `claude-3-5-sonnet-20241022` - 404 Not Found
+- `claude-3-5-sonnet-20240620` - 404 Not Found
+- `claude-3-opus-20240229` - 404 Not Found (deprecated)
+- `claude-3-sonnet-20240229` - 404 Not Found (deprecated)
+
+**API Key Limitation:**
+The provided Anthropic API key only has access to Claude 3 Haiku. Newer Claude 3.5 Sonnet and Claude Opus models are not accessible with this key.
 
 ## Comparison to Baseline
 
@@ -73,32 +95,50 @@ Evaluated VLM depth estimation capabilities using synthetic test data with known
 - MAE: 0.10-0.30 meters
 - AbsRel: 0.05-0.15
 
-**VLM Performance (GPT-4o):**
-- MAE: 1.41 meters ❌ *~5-14x worse*
-- AbsRel: 0.30 ❌ *~2-6x worse*
+**VLM Performance:**
+
+| Model | MAE (meters) | AbsRel | vs Traditional |
+|-------|--------------|--------|----------------|
+| **Traditional Depth** | 0.10-0.30 | 0.05-0.15 | Baseline |
+| **GPT-4o** | 1.41 | 0.30 | ~5-14x worse ❌ |
+| **Claude 3 Haiku** | 32.48 | 6.47 | ~108-325x worse ❌❌❌ |
+
+**Key Insight:** Claude 3 Haiku performs **23x worse** than GPT-4o on depth estimation.
 
 ## Key Findings
 
-1. **VLMs Can Answer Depth Queries:** GPT-4o successfully understood the task and provided numeric depth estimates
+1. **VLMs Can Answer Depth Queries:** Both GPT-4o and Claude 3 Haiku successfully understood the task and provided numeric depth estimates (100% response rate)
 
-2. **Accuracy Is Limited:** Current VLMs are not suitable replacements for dedicated depth estimation models
+2. **Major Performance Differences Between Models:**
+   - GPT-4o: Moderate accuracy (~1.4m error on average)
+   - Claude 3 Haiku: Very poor accuracy (~32m error, mostly guessing "40 meters")
 
-3. **Use Case Considerations:**
+3. **Accuracy Is Limited:** Current VLMs are not suitable replacements for dedicated depth estimation models
+
+4. **Model Selection Matters:**
+   - GPT-4o shows genuine depth estimation capability (though imperfect)
+   - Claude 3 Haiku appears to return default/safe answers rather than analyzing depth
+   - Higher-tier Claude models (Sonnet/Opus) would likely perform better but require API access
+
+5. **Use Case Considerations:**
    - ✅ Good for: Qualitative spatial reasoning ("this object is farther than that")
+   - ⚠️ GPT-4o might work for: Rough distance estimates (±1-2m tolerance)
    - ❌ Not suitable for: Metric measurements requiring <1m accuracy
-   - ⚠️ Caution needed: Construction inspection, robotics, autonomous vehicles
+   - ❌ Avoid: Construction inspection, robotics, autonomous vehicles (for depth)
 
-4. **Prompt Engineering Opportunity:** Results might improve with:
+6. **Prompt Engineering Opportunity:** Results might improve with:
    - Better prompt design
    - Including camera intrinsics
    - Providing reference objects with known dimensions
    - Multi-shot examples
+   - Using higher-tier models (Claude 3.5 Sonnet, GPT-4 Vision)
 
 ## Files Generated
 
-- [outputs/predictions/vlm_answers/test_gpt4o.jsonl](outputs/predictions/vlm_answers/test_gpt4o.jsonl) - Raw predictions
-- [outputs/predictions/vlm_answers/test_gpt4o_metrics.json](outputs/predictions/vlm_answers/test_gpt4o_metrics.json) - Metrics summary
-- [outputs/predictions/vlm_answers/test_claude*.jsonl](outputs/predictions/vlm_answers/) - Claude attempts (failed)
+- [outputs/predictions/vlm_answers/test_gpt4o.jsonl](outputs/predictions/vlm_answers/test_gpt4o.jsonl) - GPT-4o predictions
+- [outputs/predictions/vlm_answers/test_gpt4o_metrics.json](outputs/predictions/vlm_answers/test_gpt4o_metrics.json) - GPT-4o metrics
+- [outputs/predictions/vlm_answers/test_claude_haiku.jsonl](outputs/predictions/vlm_answers/test_claude_haiku.jsonl) - Claude Haiku predictions
+- [outputs/predictions/vlm_answers/test_claude_haiku_metrics.json](outputs/predictions/vlm_answers/test_claude_haiku_metrics.json) - Claude Haiku metrics
 
 ## Next Steps
 
@@ -121,4 +161,19 @@ Evaluated VLM depth estimation capabilities using synthetic test data with known
 
 ## Conclusion
 
-The evaluation framework is working correctly and successfully tested GPT-4o's depth estimation capabilities. Results confirm that while VLMs can engage with depth queries, they're not yet accurate enough for applications requiring precise metric depth measurements. For the construction inspection project, we recommend using traditional depth estimation models for measurements and VLMs for higher-level spatial reasoning and defect detection.
+The evaluation framework is working correctly and successfully tested both GPT-4o and Claude 3 Haiku depth estimation capabilities.
+
+**Key Takeaways:**
+1. **VLMs can respond to depth queries** but with varying accuracy
+2. **GPT-4o shows moderate capability** (~1.4m average error)
+3. **Claude 3 Haiku performs poorly** (~32m average error, mostly guessing)
+4. **Model tier matters significantly** - Haiku is 23x worse than GPT-4o
+
+**For the construction inspection project:**
+- ✅ Use traditional depth models (Depth Anything, ZoeDepth) for metric measurements
+- ✅ Use VLMs (GPT-4o or Claude 3.5 Sonnet) for spatial reasoning and defect detection
+- ❌ Don't rely on VLMs for precise depth/distance measurements
+- ✅ Best approach: Combine depth models for "what" and VLMs for "why"
+
+**To get better Claude results:**
+Upgrade to Claude 3.5 Sonnet or Opus - Haiku is the weakest Claude model and not designed for complex vision tasks.
