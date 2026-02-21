@@ -23,13 +23,13 @@ def _get_pipe():
         return _inpaint_pipe
 
     import torch
-    from diffusers import AutoPipelineForInpainting
+    from diffusers import StableDiffusionXLInpaintPipeline
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if device == "cuda" else torch.float32
 
     log.info(f"Loading SDXL Inpainting on {device}")
-    _inpaint_pipe = AutoPipelineForInpainting.from_pretrained(
+    _inpaint_pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
         "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
         torch_dtype=dtype,
         variant="fp16" if device == "cuda" else None,
