@@ -1,0 +1,24 @@
+[project]
+name = "temporal-construction-world-model"
+version = "0.1.0"
+description = "4D reconstruction pipeline for construction site evolution tracking"
+requires-python = ">=3.11"
+dependencies = [
+    "opencv-python>=4.10.0",
+    "numpy>=2.0.0",
+    "open3d>=0.18.0",
+    "scikit-learn>=1.5.0",
+    "scikit-image>=0.24.0",
+    "pillow>=10.0.0",
+    "scipy>=1.14.0",
+    "tqdm>=4.66.0",
+    "pyyaml>=6.0.0",
+    "scenedetect[opencv]>=0.6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

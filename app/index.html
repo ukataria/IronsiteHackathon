@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temporal Construction World Model</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        #controls {
+            width: 320px;
+            background: #2a2a2a;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #4CAF50;
+        }
+
+        h2 {
+            font-size: 16px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #81C784;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            width: 18px;
+            height: 18px;
+            background: #4CAF50;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        #segment-info {
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+
+        .info-label {
+            color: #aaa;
+        }
+
+        .info-value {
+            color: #fff;
+            font-weight: 500;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #4CAF50;
+            z-index: 1000;
+        }
+
+        #loading.hidden {
+            display: none;
+        }
+
+        .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container">
+            <div id="loading">
+                <div class="spinner"></div>
+                <div>Loading point clouds...</div>
+            </div>
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div id="controls">
+            <h1>Temporal Construction World Model</h1>
+            <p style="font-size: 12px; color: #888; margin-bottom: 20px;">
+                4D reconstruction with temporal slider
+            </p>
+
+            <div class="control-group">
+                <label>Time Segment: <span id="segment-label">0</span></label>
+                <input type="range" id="time-slider" min="0" max="0" value="0" step="1">
+            </div>
+
+            <h2>Segment Info</h2>
+            <div id="segment-info">
+                <div class="info-row">
+                    <span class="info-label">Segment:</span>
+                    <span class="info-value" id="info-segment">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Time Range:</span>
+                    <span class="info-value" id="info-time">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Duration:</span>
+                    <span class="info-value" id="info-duration">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Points:</span>
+                    <span class="info-value" id="info-points">-</span>
+                </div>
+            </div>
+
+            <h2>View Options</h2>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="show-reference" checked>
+                <label for="show-reference">Show Reference</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="show-changes" checked>
+                <label for="show-changes">Show Changes</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="show-added">
+                <label for="show-added">Added Geometry (Green)</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="show-removed">
+                <label for="show-removed">Removed Geometry (Red)</label>
+            </div>
+
+            <h2>Camera Controls</h2>
+            <p style="font-size: 12px; color: #888; line-height: 1.6;">
+                <strong>Rotate:</strong> Left mouse button<br>
+                <strong>Pan:</strong> Right mouse button<br>
+                <strong>Zoom:</strong> Scroll wheel
+            </p>
+
+            <button id="reset-camera">Reset Camera</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>

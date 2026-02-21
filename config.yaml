@@ -1,0 +1,33 @@
+# Temporal Construction World Model Configuration
+
+segmentation:
+  method: "scenedetect"  # or "manual"
+  threshold: 27.0        # Scene change sensitivity (lower = more sensitive)
+  min_scene_len: 30      # Minimum frames per segment
+
+extraction:
+  fps: 2.5               # Frames per second to extract
+  max_frames: 800        # Total frame budget across all segments
+  blur_threshold: 100.0  # Laplacian variance cutoff (higher = sharper required)
+  similarity_threshold: 0.95  # SSIM threshold for deduplication
+
+colmap:
+  feature_extractor: "sift"
+  matcher: "exhaustive"
+  min_num_matches: 15
+  camera_model: "SIMPLE_RADIAL"
+  max_image_size: 1600
+
+alignment:
+  method: "icp"
+  reference: "segment_0"  # or "largest" or "manual"
+  max_iterations: 100
+  threshold: 0.05
+  voxel_size: 0.05       # For downsampling before ICP
+
+changes:
+  nn_distance: 0.05      # Nearest neighbor threshold for change detection
+  cluster_eps: 0.1       # DBSCAN epsilon for clustering changes
+  min_cluster_size: 50   # Minimum points per change cluster
+  statistical_outlier_nb_neighbors: 20
+  statistical_outlier_std_ratio: 2.0
