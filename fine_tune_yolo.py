@@ -1,0 +1,257 @@
+"""
+YOLO Fine-Tuning Script with Multi-Dataset Merging
+====================================================
+Fine-tunes a YOLO model (YOLOv8 or YOLO26) on one or more YOLOv8-format datasets.
+
+If multiple datasets are provided, they are merged into a single unified dataset
+with remapped class IDs and a combined data.yaml.
+
+Usage:
+    # Single dataset
+    python finetune_yolo.py --data ./Bricks.yolo/data.yaml
+
+    # Multiple datasets merged together
+    python finetune_yolo.py --data ./Bricks.yolo/data.yaml ./Outlets.yolo/data.yaml
+
+    # Use YOLO26 instead of YOLOv8
+    python finetune_yolo.py --data ./Bricks.yolo/data.yaml ./Outlets.yolo/data.yaml --model yolo26m.pt
+
+    # Custom training params
+    python finetune_yolo.py --data ./merged/data.yaml --model yolo26m.pt --epochs 100 --batch 8 --imgsz 640
+"""
+
+import argparse
+import shutil
+import yaml
+from pathlib import Path
+from ultralytics import YOLO
+
+
+def load_data_yaml(yaml_path):
+    """Load a data.yaml and resolve paths relative to its location."""
+    yaml_path = Path(yaml_path).resolve()
+    with open(yaml_path, "r") as f:
+        data = yaml.safe_load(f)
+
+    base_dir = yaml_path.parent
+    # If 'path' is specified, use it as base; otherwise use yaml's parent dir
+    if "path" in data and data["path"]:
+        base_dir = Path(data["path"])
+        if not base_dir.is_absolute():
+            base_dir = yaml_path.parent / base_dir
+        base_dir = base_dir.resolve()
+
+    data["_base_dir"] = base_dir
+    data["_yaml_path"] = yaml_path
+    return data
+
+
+def merge_datasets(yaml_paths, output_dir):
+    """
+    Merge multiple YOLO datasets into one unified dataset.
+
+    - Combines all class names into a single list (deduplicating by name)
+    - Remaps class IDs in label files accordingly
+    - Copies images and remapped labels into a single dataset
+    - Generates a unified data.yaml
+
+    Returns the path to the merged data.yaml.
+    """
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Step 1: Build unified class list ──
+    unified_names = []  # ordered list of unique class names
+    name_to_id = {}     # class_name -> unified_id
+
+    datasets = []
+    for yp in yaml_paths:
+        data = load_data_yaml(yp)
+        datasets.append(data)
+
+        # data["names"] can be a dict {0: "brick", 1: "outlet"} or list ["brick", "outlet"]
+        names = data.get("names", {})
+        if isinstance(names, dict):
+            names = {int(k): v for k, v in names.items()}
+            sorted_names = [names[k] for k in sorted(names.keys())]
+        else:
+            sorted_names = list(names)
+
+        for class_name in sorted_names:
+            if class_name not in name_to_id:
+                name_to_id[class_name] = len(unified_names)
+                unified_names.append(class_name)
+
+        data["_sorted_names"] = sorted_names
+
+    print(f"\nUnified class list ({len(unified_names)} classes):")
+    for i, name in enumerate(unified_names):
+        print(f"  {i}: {name}")
+
+    # ── Step 2: Build class ID remap for each dataset ──
+    for data in datasets:
+        # old_id -> new_id
+        remap = {}
+        for old_id, class_name in enumerate(data["_sorted_names"]):
+            remap[old_id] = name_to_id[class_name]
+        data["_remap"] = remap
+
+    # ── Step 3: Copy images and remap labels ──
+    for split in ["train", "valid", "test"]:
+        img_out = output_dir / split / "images"
+        lbl_out = output_dir / split / "labels"
+        img_out.mkdir(parents=True, exist_ok=True)
+        lbl_out.mkdir(parents=True, exist_ok=True)
+
+        total_images = 0
+
+        for ds_idx, data in enumerate(datasets):
+            base_dir = data["_base_dir"]
+            remap = data["_remap"]
+
+            # Resolve the split's image directory
+            split_key = "val" if split == "valid" and "val" not in data and "valid" not in data else split
+            img_dir_rel = data.get(split_key) or data.get("val" if split == "valid" else split)
+            if img_dir_rel is None:
+                continue
+
+            img_dir = Path(base_dir) / img_dir_rel
+            if not img_dir.exists():
+                # Try common alternatives
+                for alt in [split, f"{split}/images"]:
+                    alt_path = base_dir / alt
+                    if alt_path.exists():
+                        img_dir = alt_path
+                        break
+
+            if not img_dir.exists():
+                continue
+
+            # Infer labels dir from images dir
+            lbl_dir = Path(str(img_dir).replace("/images", "/labels").replace("\\images", "\\labels"))
+
+            for img_file in img_dir.iterdir():
+                if img_file.suffix.lower() not in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}:
+                    continue
+
+                # Prefix filename with dataset index to avoid collisions
+                new_name = f"ds{ds_idx}_{img_file.name}"
+                shutil.copy2(img_file, img_out / new_name)
+
+                # Copy and remap label
+                label_file = lbl_dir / (img_file.stem + ".txt")
+                new_label = lbl_out / (f"ds{ds_idx}_{img_file.stem}.txt")
+
+                if label_file.exists():
+                    with open(label_file, "r") as f:
+                        lines = f.readlines()
+
+                    remapped_lines = []
+                    for line in lines:
+                        parts = line.strip().split()
+                        if len(parts) >= 5:
+                            old_id = int(parts[0])
+                            new_id = remap.get(old_id, old_id)
+                            remapped_lines.append(f"{new_id} {' '.join(parts[1:])}\n")
+
+                    with open(new_label, "w") as f:
+                        f.writelines(remapped_lines)
+                else:
+                    # No label = negative image, create empty file
+                    new_label.touch()
+
+                total_images += 1
+
+        if total_images > 0:
+            print(f"  {split}: {total_images} images merged")
+
+    # ── Step 4: Write unified data.yaml ──
+    unified_yaml = {
+        "path": str(output_dir),
+        "train": "train/images",
+        "val": "valid/images",
+        "nc": len(unified_names),
+        "names": {i: name for i, name in enumerate(unified_names)},
+    }
+
+    if (output_dir / "test" / "images").exists() and any((output_dir / "test" / "images").iterdir()):
+        unified_yaml["test"] = "test/images"
+
+    yaml_path = output_dir / "data.yaml"
+    with open(yaml_path, "w") as f:
+        yaml.dump(unified_yaml, f, default_flow_style=False, sort_keys=False)
+
+    print(f"\n  Merged data.yaml written to {yaml_path}")
+    return yaml_path
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Fine-tune YOLO on one or more datasets.")
+    parser.add_argument("--data", nargs="+", required=True,
+                        help="Path(s) to data.yaml file(s). If multiple, datasets are merged.")
+    parser.add_argument("--model", type=str, default="yolo26m.pt",
+                        help="Pretrained model (default: yolo26m.pt). Options: yolo26n/s/m/l.pt or yolov8n/s/m/l/x.pt")
+    parser.add_argument("--epochs", type=int, default=50, help="Training epochs (default: 50)")
+    parser.add_argument("--batch", type=int, default=16, help="Batch size (default: 16)")
+    parser.add_argument("--imgsz", type=int, default=640, help="Image size (default: 640)")
+    parser.add_argument("--patience", type=int, default=10, help="Early stopping patience (default: 10)")
+    parser.add_argument("--device", type=str, default="0", help="Device: 0 for GPU, cpu, or mps (default: 0)")
+    parser.add_argument("--project", type=str, default="runs", help="Output project directory (default: runs)")
+    parser.add_argument("--name", type=str, default="finetune", help="Run name (default: finetune)")
+    parser.add_argument("--merge-dir", type=str, default="merged_dataset",
+                        help="Directory for merged dataset (default: merged_dataset)")
+    args = parser.parse_args()
+
+    # ── Resolve dataset ──
+    if len(args.data) > 1:
+        print(f"\nMerging {len(args.data)} datasets...")
+        data_yaml = merge_datasets(args.data, args.merge_dir)
+    else:
+        data_yaml = Path(args.data[0]).resolve()
+        print(f"\nUsing single dataset: {data_yaml}")
+
+    # ── Load model ──
+    print(f"\nLoading pretrained model: {args.model}")
+    model = YOLO(args.model)
+
+    # ── Train ──
+    print(f"\nStarting fine-tuning...")
+    print(f"  Epochs:    {args.epochs}")
+    print(f"  Batch:     {args.batch}")
+    print(f"  Image size: {args.imgsz}")
+    print(f"  Device:    {args.device}")
+
+    results = model.train(
+        data=str(data_yaml),
+        epochs=args.epochs,
+        imgsz=args.imgsz,
+        batch=args.batch,
+        patience=args.patience,
+        lr0=0.001,
+        lrf=0.01,
+        augment=True,
+        device=int(args.device) if args.device.isdigit() else args.device,
+        project=args.project,
+        name=args.name,
+    )
+
+    # ── Evaluate ──
+    print("\nEvaluating on validation set...")
+    metrics = model.val()
+    print(f"  mAP50:    {metrics.box.map50:.4f}")
+    print(f"  mAP50-95: {metrics.box.map:.4f}")
+
+    # ── Print results ──
+    best_weights = Path(args.project) / args.name / "weights" / "best.pt"
+    print(f"\nDone! Best weights saved to: {best_weights}")
+    print(f"\nTo run inference:")
+    print(f'  model = YOLO("{best_weights}")')
+    print(f'  results = model.predict("image.jpg", conf=0.25)')
+
+    # ── Export (optional, commented out) ──
+    # best_model = YOLO(best_weights)
+    # best_model.export(format="onnx")
+
+
+if __name__ == "__main__":
+    main()
