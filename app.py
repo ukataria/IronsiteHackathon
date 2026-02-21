@@ -229,25 +229,25 @@ measured_path = find_measured_image(selected_image_id)
 with img_col1:
     st.markdown("**Original Image**")
     if src_path:
-        st.image(load_image_file(src_path), use_container_width=True)
+        st.image(load_image_file(src_path), width="stretch")
     else:
         st.caption("Source image not found in data/frames/")
 
 with img_col2:
-    st.markdown("**Anchor Detection + Depth Map**")
-    if depth_path:
-        st.image(load_image_file(depth_path), use_container_width=True)
-    elif annotated_path:
-        st.image(load_image_file(annotated_path), use_container_width=True)
+    st.markdown("**Anchor Detection**")
+    if annotated_path:
+        st.image(load_image_file(annotated_path), width="stretch")
+    elif depth_path:
+        st.image(load_image_file(depth_path), width="stretch")
     else:
-        st.caption("Depth/annotated image not found.")
+        st.caption("Annotated image not found.")
 
 with img_col3:
     st.markdown("**Measured Overlay**")
     if measured_path:
-        st.image(load_image_file(measured_path), use_container_width=True)
+        st.image(load_image_file(measured_path), width="stretch")
     elif annotated_path:
-        st.image(load_image_file(annotated_path), use_container_width=True)
+        st.image(load_image_file(annotated_path), width="stretch")
     else:
         st.caption("Measurement overlay not found.")
 
