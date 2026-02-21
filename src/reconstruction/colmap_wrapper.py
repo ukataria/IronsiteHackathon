@@ -44,6 +44,8 @@ def run_colmap_feature_extraction(
         "1",
         "--SiftExtraction.max_image_size",
         str(max_image_size),
+        "--SiftExtraction.use_gpu",
+        "0",  # Disable GPU to avoid OpenGL context errors
     ]
 
     subprocess.run(cmd, check=True)
