@@ -11,12 +11,22 @@ extraction:
   blur_threshold: 80.0   # Accept slightly blurrier frames
   similarity_threshold: 0.90  # Less aggressive deduplication
 
+reconstruction:
+  method: "ngp"  # Use Instant-NGP instead of COLMAP
+
+ngp:
+  camera_fov: 0.7        # Field of view in radians (~40 degrees)
+  n_steps: 2000          # Training steps (more = better quality, 2000 is fast)
+  snapshot_interval: 500 # Save checkpoint every N steps
+  export_resolution: 256 # Point cloud extraction resolution
+  density_threshold: 10.0 # Minimum density for point inclusion
+
 colmap:
   feature_extractor: "sift"
-  matcher: "sequential"  # Faster than exhaustive
-  min_num_matches: 10    # Lower threshold
+  matcher: "sequential"
+  min_num_matches: 10
   camera_model: "SIMPLE_RADIAL"
-  max_image_size: 1200   # Smaller = faster
+  max_image_size: 1200
 
 alignment:
   method: "icp"

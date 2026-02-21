@@ -8,6 +8,7 @@ from src.changes.detect import detect_and_cluster_changes
 from src.export.timeline import export_for_viewer
 from src.extraction.extract import extract_and_filter
 from src.reconstruction.colmap_wrapper import check_colmap_installed, reconstruct_segment
+from src.reconstruction.ngp_wrapper import check_ngp_installed, reconstruct_segment_ngp
 from src.segmentation.segment_time import segment_video
 from src.utils import create_video_id_dir, get_logger, load_config, save_json
 
@@ -107,15 +108,27 @@ def run_pipeline(
     else:
         log.info("Skipping frame extraction")
 
-    # Step 3: COLMAP 3D Reconstruction
+    # Step 3: 3D Reconstruction (NGP or COLMAP)
     if not skip_reconstruction:
         log.info("=" * 60)
-        log.info("STEP 3: COLMAP 3D Reconstruction")
-        log.info("=" * 60)
 
-        # Check COLMAP installation
-        if not check_colmap_installed():
-            raise RuntimeError("COLMAP not installed")
+        # Check which reconstruction method to use
+        recon_method = config.get("reconstruction", {}).get("method", "colmap")
+
+        if recon_method == "ngp":
+            log.info("STEP 3: Instant-NGP 3D Reconstruction (GPU)")
+            log.info("=" * 60)
+
+            if not check_ngp_installed():
+                log.warning("Instant-NGP not installed, falling back to COLMAP")
+                recon_method = "colmap"
+
+        if recon_method == "colmap":
+            log.info("STEP 3: COLMAP 3D Reconstruction")
+            log.info("=" * 60)
+
+            if not check_colmap_installed():
+                raise RuntimeError("COLMAP not installed")
 
         pointclouds = []
 
@@ -127,14 +140,26 @@ def run_pipeline(
                 log.warning(f"Frame directory not found: {frame_dir}, skipping")
                 continue
 
-            colmap_output = segments_dir / f"segment_{i}" / "colmap"
-            reconstruction_result = reconstruct_segment(frame_dir=frame_dir, output_dir=colmap_output, config=config)
+            output_dir = segments_dir / f"segment_{i}" / recon_method
+
+            if recon_method == "ngp":
+                reconstruction_result = reconstruct_segment_ngp(
+                    frame_dir=frame_dir,
+                    output_dir=output_dir,
+                    config=config
+                )
+            else:
+                reconstruction_result = reconstruct_segment(
+                    frame_dir=frame_dir,
+                    output_dir=output_dir,
+                    config=config
+                )
 
             pointclouds.append(reconstruction_result["pointcloud"])
 
         results["pointclouds"] = pointclouds
     else:
-        log.info("Skipping COLMAP reconstruction")
+        log.info("Skipping 3D reconstruction")
 
     # Step 4: Point Cloud Alignment
     if not skip_alignment:
