@@ -1,5 +1,6 @@
 """COLMAP reconstruction wrapper for 3D point cloud generation."""
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,6 +10,9 @@ import numpy as np
 from src.utils import get_logger, load_config, save_json
 
 log = get_logger(__name__)
+
+# Force headless mode for COLMAP (no GUI)
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 
 def run_colmap_feature_extraction(
