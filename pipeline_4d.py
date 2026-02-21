@@ -63,12 +63,17 @@ DYNAMIC_OBJECT_LABELS = [
 
 # ── Setup ──────────────────────────────────────────────────────────────────────
 
-def setup_dirs(n_periods: int) -> list[dict[str, Path]]:
-    """Create output directory tree; return list of per-period path dicts."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+def setup_dirs(video_stem: str, n_periods: int) -> tuple[list[dict[str, Path]], Path]:
+    """
+    Create output directory tree namespaced by video filename stem.
+    Returns (period_paths, output_dir).
+    """
+    periods_dir = DATA_DIR / "periods" / video_stem
+    output_dir = DATA_DIR / "output" / video_stem
+    output_dir.mkdir(parents=True, exist_ok=True)
     period_paths = []
     for i in range(n_periods):
-        base = PERIODS_DIR / f"period_{i:02d}"
+        base = periods_dir / f"period_{i:02d}"
         dirs = {
             "base":   base,
             "frames": base / "frames",
@@ -80,7 +85,7 @@ def setup_dirs(n_periods: int) -> list[dict[str, Path]]:
         for d in dirs.values():
             d.mkdir(parents=True, exist_ok=True)
         period_paths.append(dirs)
-    return period_paths
+    return period_paths, output_dir
 
 
 def get_device() -> str:
@@ -210,13 +215,14 @@ def mask_frame(
             image.save(str(masked_path))
             return masked_path
 
+        # Format: [image_batch [boxes [xmin, ymin, xmax, ymax]]] = 3 levels
         input_boxes = [
-            [[d["box"]["xmin"], d["box"]["ymin"], d["box"]["xmax"], d["box"]["ymax"]]]
+            [d["box"]["xmin"], d["box"]["ymin"], d["box"]["xmax"], d["box"]["ymax"]]
             for d in detections
         ]
         inputs = sam2_processor(
             images=image,
-            input_boxes=[input_boxes],
+            input_boxes=[input_boxes],  # wrap once for batch dim
             return_tensors="pt",
         ).to(device)
 
@@ -635,6 +641,7 @@ def _register_pair(
 
 def align_point_clouds(
     period_clouds: list[tuple[np.ndarray, np.ndarray]],
+    output_dir: Path,
     voxel_size: float = VOXEL_SIZE,
 ) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[np.ndarray]]:
     """
@@ -669,7 +676,7 @@ def align_point_clouds(
             aligned.append((aligned_pts, aligned_cols))
             transforms.append(T)
 
-            np.save(str(OUTPUT_DIR / f"transform_{i:02d}.npy"), T)
+            np.save(str(output_dir / f"transform_{i:02d}.npy"), T)
             print(f"  period_{i:02d} aligned (fitness: {_register_pair.__doc__})")
         except Exception as e:
             print(f"  [warn] ICP failed for period_{i:02d}: {e} — using unaligned cloud")
@@ -814,7 +821,7 @@ def main() -> None:
     labels = args.labels or [f"Period {i+1}" for i in range(args.periods)]
     labels = (labels * args.periods)[: args.periods]
 
-    period_dirs = setup_dirs(args.periods)
+    period_dirs, output_dir = setup_dirs(args.video.stem, args.periods)
     device = get_device()
     print(f"Device: {device}\n")
 
@@ -903,10 +910,10 @@ def main() -> None:
     # ── [5/6] ICP alignment ───────────────────────────────────────────────────
     print("[5/6] Aligning periods with ICP ...")
     try:
-        aligned_clouds, transforms = align_point_clouds(period_final_clouds, VOXEL_SIZE)
+        aligned_clouds, transforms = align_point_clouds(period_final_clouds, output_dir, VOXEL_SIZE)
         all_pts = np.concatenate([p for p, _ in aligned_clouds])
         all_cols = np.concatenate([c for _, c in aligned_clouds])
-        save_ply(all_pts, all_cols, OUTPUT_DIR / "aligned_clouds.ply")
+        save_ply(all_pts, all_cols, output_dir / "aligned_clouds.ply")
     except Exception as e:
         print(f"  [warn] ICP alignment failed ({e}) — using unaligned clouds")
         aligned_clouds = period_final_clouds
@@ -914,13 +921,13 @@ def main() -> None:
 
     # ── [6/6] Export 4D HTML viewer ───────────────────────────────────────────
     print("[6/6] Exporting 4D HTML viewer ...")
-    html_path = OUTPUT_DIR / "4d_world_model.html"
+    html_path = output_dir / "4d_world_model.html"
     export_4d_html(aligned_clouds, labels, html_path)
 
     print("\n" + "─" * 60)
     print("Done!")
-    print(f"  Period clouds:  {PERIODS_DIR}/")
-    print(f"  Aligned cloud:  {OUTPUT_DIR}/aligned_clouds.ply")
+    print(f"  Period clouds:  {DATA_DIR / 'periods' / args.video.stem / ''}")
+    print(f"  Aligned cloud:  {output_dir}/aligned_clouds.ply")
     print(f"  4D viewer:      {html_path}  ← open in browser")
     print("─" * 60 + "\n")
 
