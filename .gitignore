@@ -1,5 +1,47 @@
-
-
-
 # Secrets
 .env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Data directories (large files, never commit)
+data/raw/
+data/frames/
+data/depth/
+data/detections/
+data/calibrations/
+data/measurements/
+data/results/
+data/cache/
+
+# Large binary files
+*.npy
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# Model weights cache
+.cache/
+weights/
+checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
