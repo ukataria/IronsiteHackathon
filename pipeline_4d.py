@@ -229,18 +229,14 @@ def mask_frame(
         with torch.no_grad():
             outputs = sam2_model(**inputs, multimask_output=False)
 
-        # Derive reshaped size from pixel_values when key is absent (fast processor)
-        if "reshaped_input_sizes" in inputs:
-            reshaped = inputs["reshaped_input_sizes"].cpu()
-        else:
-            _, _, h, w = inputs["pixel_values"].shape
-            reshaped = torch.tensor([[h, w]])
-        masks = sam2_processor.post_process_masks(
-            outputs.pred_masks.cpu(),
-            inputs["original_sizes"].cpu(),
-            reshaped,
-        )[0]
-        combined = masks.squeeze(1).any(dim=0).numpy()
+        # Interpolate masks back to original image size directly (avoids
+        # post_process_masks API differences across transformers versions)
+        orig_h, orig_w = image.size[1], image.size[0]  # PIL: (W, H)
+        raw_masks = outputs.pred_masks.float().squeeze(0)  # (N, 1, mH, mW)
+        resized = torch.nn.functional.interpolate(
+            raw_masks, size=(orig_h, orig_w), mode="bilinear", align_corners=False
+        )
+        combined = (resized.squeeze(1) > 0.0).any(dim=0).cpu().numpy()
 
         frame_arr = np.array(image)
         frame_arr[combined] = 0
@@ -420,6 +416,10 @@ def run_colmap(
     sparse_dir.mkdir(exist_ok=True)
     gpu_flag = "1" if use_gpu else "0"
 
+    # Prevent Qt from trying to open a display on headless servers
+    colmap_env = os.environ.copy()
+    colmap_env["QT_QPA_PLATFORM"] = "offscreen"
+
     try:
         print("  Running COLMAP feature extraction ...")
         subprocess.run([
@@ -428,14 +428,14 @@ def run_colmap(
             "--image_path", str(frame_dir),
             "--ImageReader.single_camera", "1",
             "--SiftExtraction.use_gpu", gpu_flag,
-        ], check=True)
+        ], check=True, env=colmap_env)
 
         print("  Running COLMAP exhaustive matching ...")
         subprocess.run([
             "colmap", "exhaustive_matcher",
             "--database_path", str(db_path),
             "--SiftMatching.use_gpu", gpu_flag,
-        ], check=True)
+        ], check=True, env=colmap_env)
 
         print("  Running COLMAP mapper ...")
         subprocess.run([
@@ -444,7 +444,7 @@ def run_colmap(
             "--image_path", str(frame_dir),
             "--output_path", str(sparse_dir),
             "--Mapper.min_num_matches", "15",
-        ], check=True)
+        ], check=True, env=colmap_env)
 
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(f"  [warn] COLMAP failed: {e} — falling back to depth-based point clouds")
