@@ -394,7 +394,6 @@ def save_ply(points: np.ndarray, colors: np.ndarray, out_path: Path) -> None:
 def run_colmap(
     frame_dir: Path,
     colmap_dir: Path,
-    use_gpu: bool = True,
 ) -> bool:
     """
     Run COLMAP feature extraction → matching → mapper via subprocess.
@@ -414,27 +413,27 @@ def run_colmap(
     db_path = colmap_dir / "database.db"
     sparse_dir = colmap_dir / "sparse"
     sparse_dir.mkdir(exist_ok=True)
-    gpu_flag = "1" if use_gpu else "0"
 
-    # Prevent Qt from trying to open a display on headless servers
+    # COLMAP SIFT uses OpenGL (not CUDA), which requires a display.
+    # On headless servers, always disable GPU for SIFT — CPU fallback works fine.
     colmap_env = os.environ.copy()
     colmap_env["QT_QPA_PLATFORM"] = "offscreen"
 
     try:
-        print("  Running COLMAP feature extraction ...")
+        print("  Running COLMAP feature extraction (CPU SIFT) ...")
         subprocess.run([
             "colmap", "feature_extractor",
             "--database_path", str(db_path),
             "--image_path", str(frame_dir),
             "--ImageReader.single_camera", "1",
-            "--SiftExtraction.use_gpu", gpu_flag,
+            "--SiftExtraction.use_gpu", "0",
         ], check=True, env=colmap_env)
 
         print("  Running COLMAP exhaustive matching ...")
         subprocess.run([
             "colmap", "exhaustive_matcher",
             "--database_path", str(db_path),
-            "--SiftMatching.use_gpu", gpu_flag,
+            "--SiftMatching.use_gpu", "0",
         ], check=True, env=colmap_env)
 
         print("  Running COLMAP mapper ...")
