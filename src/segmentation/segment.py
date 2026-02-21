@@ -108,12 +108,16 @@ def detect_elements(
     detections = []
     for score, label, box in zip(results["scores"], text_labels, results["boxes"]):
         label_str = label if isinstance(label, str) else str(label)
+        # Clean BERT subword tokens (##xyz artifacts from GroundingDINO tokenizer)
+        clean = label_str.replace("##", "").lower().strip()
+        # Match against known construction labels by substring
         category = next(
-            (v for k, v in LABEL_CATEGORY_MAP.items() if k in label_str.lower()),
-            label_str.split()[0],
+            (v for k, v in LABEL_CATEGORY_MAP.items()
+             if any(part in clean for part in k.split())),
+            "walls",  # default fallback
         )
         detections.append({
-            "label": label_str,
+            "label": clean,
             "category": category,
             "score": float(score),
             "box": [float(x) for x in box.tolist()],
