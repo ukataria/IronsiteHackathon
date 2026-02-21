@@ -6,7 +6,7 @@ Analyze this construction site image. You may also have a depth map showing the 
 
 Return a JSON object with this exact structure:
 {
-  "construction_phase": "framing|rough-in|drywall|finishing|complete",
+  "construction_phase": "excavation|foundation|framing|rough-in|drywall|finishing|complete",
   "room_dimensions": {
     "estimated_width_ft": <number>,
     "estimated_depth_ft": <number>,
@@ -20,7 +20,7 @@ Return a JSON object with this exact structure:
     }
   ],
   "surfaces": {
-    "walls": "bare_studs|osb|drywall_unfinished|drywall_painted|concrete_block|brick",
+    "walls": "bare_studs|osb|drywall_unfinished|drywall_painted|concrete_block|brick|poured_concrete|earth|none",
     "floor": "concrete_slab|subfloor_plywood|hardwood|tile|carpet",
     "ceiling": "exposed_joists|drywall_unfinished|drywall_painted|drop_ceiling"
   },
@@ -111,7 +111,19 @@ INPAINT_ELECTRICAL_PROMPT = (
     "photorealistic, sharp focus, 8k"
 )
 
+INPAINT_FOUNDATION_WALL_PROMPT = (
+    "finished basement wall, drylok waterproofed concrete block, smooth painted surface, "
+    "white or light gray paint, photorealistic interior construction photography, "
+    "8k resolution, sharp focus, professional lighting"
+)
+
+INPAINT_FOUNDATION_FLOOR_PROMPT = (
+    "smooth poured concrete basement floor, clean surface, light gray, "
+    "photorealistic, 8k, sharp focus, professional construction photography"
+)
+
 NEGATIVE_PROMPT = (
     "blurry, distorted, low quality, unrealistic, cartoon, sketch, "
-    "construction materials visible, studs, framing, raw wood, concrete"
+    "floating, disconnected, smoke, haze, fog, ghosting artifacts, "
+    "wrong perspective, warped geometry"
 )

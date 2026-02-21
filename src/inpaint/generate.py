@@ -44,7 +44,7 @@ def inpaint_layer(
     prompt: str,
     stem: str,
     layer_name: str,
-    strength: float = 0.99,
+    strength: float = 0.80,
     guidance_scale: float = 8.0,
     num_inference_steps: int = 30,
     seed: int = 42,
