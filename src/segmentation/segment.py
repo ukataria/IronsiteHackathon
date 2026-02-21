@@ -24,6 +24,17 @@ CONSTRUCTION_LABELS = [
     "plywood subfloor",
     "insulation",
     "temporary bracing",
+    # Foundation / exterior phase labels
+    "concrete block wall",
+    "foundation wall",
+    "masonry wall",
+    "poured concrete",
+    "rebar",
+    "footing",
+    "concrete column",
+    "exterior wall",
+    "retaining wall",
+    "gravel",
 ]
 
 # Map raw labels to clean category names
@@ -39,6 +50,17 @@ LABEL_CATEGORY_MAP = {
     "plywood subfloor": "floor",
     "insulation": "insulation",
     "temporary bracing": "studs",
+    # Foundation / exterior
+    "concrete block wall": "walls",
+    "foundation wall": "walls",
+    "masonry wall": "walls",
+    "poured concrete": "floor",
+    "rebar": "walls",
+    "footing": "walls",
+    "concrete column": "walls",
+    "exterior wall": "walls",
+    "retaining wall": "walls",
+    "gravel": "floor",
 }
 
 _grounding_model = None
@@ -100,7 +122,8 @@ def detect_elements(
     results = processor.post_process_grounded_object_detection(
         outputs,
         inputs.input_ids,
-        threshold=box_threshold,
+        box_threshold=box_threshold,
+        text_threshold=text_threshold,
         target_sizes=[img.size[::-1]],
     )[0]
 
@@ -141,8 +164,12 @@ def box_to_mask(box: list[float], image_shape: tuple[int, int]) -> np.ndarray:
 def segment_by_category(
     image_path: str | Path,
     detections: list[dict],
+    erode_px: int = 8,
 ) -> dict[str, np.ndarray]:
     """Merge detection boxes into per-category binary masks.
+
+    Applies a small erosion to each merged mask so inpainting doesn't
+    bleed into clean scene edges at box boundaries.
 
     Returns:
         Dict mapping category name → binary mask (HxW uint8, 0 or 255).
@@ -158,6 +185,16 @@ def segment_by_category(
             category_masks[cat] = cv2.bitwise_or(category_masks[cat], box_mask)
         else:
             category_masks[cat] = box_mask
+
+    if erode_px > 0:
+        kernel = np.ones((erode_px, erode_px), np.uint8)
+        category_masks = {
+            cat: cv2.erode(mask, kernel, iterations=1)
+            for cat, mask in category_masks.items()
+        }
+
+    # Drop any mask that eroded to nothing
+    category_masks = {cat: m for cat, m in category_masks.items() if m.max() > 0}
 
     return category_masks
 
@@ -218,9 +255,10 @@ def run_segmentation(
     masks = segment_by_category(image_path, detections)
 
     if not masks:
-        log.warning(f"No elements detected in {image_path.name}, using full-image fallback masks")
-        img = cv2.imread(str(image_path))
-        h, w = img.shape[:2]
-        masks["walls"] = np.ones((h, w), dtype=np.uint8) * 255
+        log.warning(
+            f"No elements detected in {image_path.name} — skipping inpainting. "
+            "Check that CONSTRUCTION_LABELS match scene content, or supply masks manually."
+        )
+        return {}
 
     return save_masks(masks, stem)
