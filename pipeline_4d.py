@@ -277,7 +277,13 @@ def mask_period_frames(
                 print(f"    [warn] SAM2 failed for {fp.name}: {e}")
                 result_map[fp] = fp
 
-    return [result_map[fp] for fp in frame_paths]
+        # zip stops at the shorter iterable — fill in any frames that were dropped
+        for fp, _, _ in to_process:
+            if fp not in result_map:
+                print(f"    [warn] batch_detections shorter than input — skipping {fp.name}")
+                result_map[fp] = fp
+
+    return [result_map.get(fp, fp) for fp in frame_paths]
 
 
 # ── Stage 3: Depth Estimation (Fallback Point Clouds) ─────────────────────────
