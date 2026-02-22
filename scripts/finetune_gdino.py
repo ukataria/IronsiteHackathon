@@ -37,6 +37,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 MODEL_ID = "IDEA-Research/grounding-dino-base"
 MAX_TEXT_LEN = 256
 
+# Map dataset category names -> phrase used in captions
 CLASS_TO_PHRASE: dict[str, str] = {
     "Bricks-Masonry": "brick",
     "brick": "brick",
@@ -44,6 +45,7 @@ CLASS_TO_PHRASE: dict[str, str] = {
     "OUTLET": "electrical outlet",
 }
 
+# Extra negatives we might add to captions
 EXTRA_NEGATIVE_CLASSES: list[str] = ["person", "window", "door", "pipe", "cable"]
 
 
@@ -89,7 +91,10 @@ def create_positive_map_from_span(
 def box_cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:
     """[cx, cy, w, h] → [x1, y1, x2, y2]."""
     cx, cy, w, h = boxes.unbind(-1)
-    return torch.stack([cx - 0.5 * w, cy - 0.5 * h, cx + 0.5 * w, cy + 0.5 * h], dim=-1)
+    return torch.stack(
+        [cx - 0.5 * w, cy - 0.5 * h, cx + 0.5 * w, cy + 0.5 * h],
+        dim=-1,
+    )
 
 
 def generalized_box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
@@ -99,15 +104,18 @@ def generalized_box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Ten
     x2 = torch.min(boxes1[:, None, 2], boxes2[None, :, 2])
     y2 = torch.min(boxes1[:, None, 3], boxes2[None, :, 3])
     inter = (x2 - x1).clamp(0) * (y2 - y1).clamp(0)
+
     area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
     area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
     union = area1[:, None] + area2[None, :] - inter
     iou = inter / union.clamp(min=1e-6)
+
     ex1 = torch.min(boxes1[:, None, 0], boxes2[None, :, 0])
     ey1 = torch.min(boxes1[:, None, 1], boxes2[None, :, 1])
     ex2 = torch.max(boxes1[:, None, 2], boxes2[None, :, 2])
     ey2 = torch.max(boxes1[:, None, 3], boxes2[None, :, 3])
     enc = (ex2 - ex1).clamp(0) * (ey2 - ey1).clamp(0)
+
     return iou - (enc - union) / enc.clamp(min=1e-6)
 
 
@@ -123,12 +131,12 @@ class COCOGroundingDataset(Dataset):
     target = {
         boxes:          (N, 4) float32 – [cx, cy, w, h] pixel coords
         size:           (2,) int        – [H, W]
-        str_cls_lst:    list[str]       – positive phrase per box
-        all_categories: list[str]       – positives + negatives
+        str_cls_lst:    list[str]       – positive phrase per box (phrase, not raw cat)
+        all_categories: list[str]       – positives + negatives (phrases)
         caption:        str
-        cat2tokenspan:  dict
-        labels:         (N,) int64
-        encoding:       BatchEncoding   – per-caption tokenization for positive map
+        cat2tokenspan:  dict[str, list[(start,end)]]
+        labels:         (N,) int64      – indices into unique positives (optional)
+        encoding:       tokenized caption (for positive map span->token)
     }
     """
 
@@ -162,8 +170,13 @@ class COCOGroundingDataset(Dataset):
                 continue
             self.records.append({"img_info": img_info, "anns": anns})
 
+        # pool of phrases seen in dataset, used for negatives
         self.all_phrases: list[str] = list(
-            {CLASS_TO_PHRASE[id_to_catname[a["category_id"]]] for rec in self.records for a in rec["anns"]}
+            {
+                CLASS_TO_PHRASE[id_to_catname[a["category_id"]]]
+                for rec in self.records
+                for a in rec["anns"]
+            }
         )
         if extra_classes:
             self.all_phrases = list(set(self.all_phrases + extra_classes))
@@ -184,31 +197,37 @@ class COCOGroundingDataset(Dataset):
 
         str_cls_lst: list[str] = []
         boxes: list[list[float]] = []
+
         for ann in anns:
             cat_name = self._id_to_catname[ann["category_id"]]
             phrase = CLASS_TO_PHRASE[cat_name]
             x, y, bw, bh = ann["bbox"]
-            boxes.append([x + bw / 2, y + bh / 2, bw, bh])
+            boxes.append([x + bw / 2, y + bh / 2, bw, bh])  # cxcywh in pixels
             str_cls_lst.append(phrase)
 
+        # negatives from phrase pool
         positive_set = set(str_cls_lst)
         candidates = [p for p in self.all_phrases if p not in positive_set]
         if candidates and self.negative_sampling_rate > 0:
-            n_neg = min(max(1, int(len(str_cls_lst) * self.negative_sampling_rate)), len(candidates))
+            n_neg = min(
+                max(1, int(len(str_cls_lst) * self.negative_sampling_rate)),
+                len(candidates),
+            )
             negatives = random.sample(candidates, n_neg)
         else:
             negatives = []
 
         all_categories = str_cls_lst + negatives
-        caption, cat2tokenspan = build_captions_and_token_span(all_categories, force_lowercase=True)
-
-        # Tokenize with same truncation settings used in the model forward
-        encoding = self.processor.tokenizer(
-            caption,
-            max_length=MAX_TEXT_LEN,
-            truncation=True,
+        caption, cat2tokenspan = build_captions_and_token_span(
+            all_categories, force_lowercase=True
         )
 
+        # tokenize caption in the same way as model inputs (truncate to MAX_TEXT_LEN)
+        encoding = self.processor.tokenizer(
+            caption, max_length=MAX_TEXT_LEN, truncation=True
+        )
+
+        # optional labels if you need them later
         phrase_to_idx = {p: i for i, p in enumerate(dict.fromkeys(str_cls_lst))}
         labels = torch.tensor([phrase_to_idx[p] for p in str_cls_lst], dtype=torch.int64)
 
@@ -231,7 +250,7 @@ class COCOGroundingDataset(Dataset):
 
 
 def make_collate_fn(processor: AutoProcessor):
-    """Returns a collate_fn that batches PIL images + captions through the HF processor."""
+    """Batch PIL images + captions through the HF processor."""
 
     def collate_fn(batch: list[tuple]) -> tuple[dict, list[dict]]:
         images, targets = zip(*batch)
@@ -255,7 +274,9 @@ def make_collate_fn(processor: AutoProcessor):
 
 
 class HungarianMatcher(nn.Module):
-    def __init__(self, cost_class: float = 1.0, cost_bbox: float = 5.0, cost_giou: float = 1.0):
+    def __init__(
+        self, cost_class: float = 1.0, cost_bbox: float = 5.0, cost_giou: float = 1.0
+    ):
         super().__init__()
         self.cost_class = cost_class
         self.cost_bbox = cost_bbox
@@ -266,33 +287,38 @@ class HungarianMatcher(nn.Module):
     def forward(self, outputs: dict, targets: list[dict]) -> tuple[list, torch.Tensor]:
         bs, num_queries = outputs["pred_logits"].shape[:2]
 
-        out_prob = outputs["pred_logits"].flatten(0, 1).sigmoid().clamp(self.eps, 1 - self.eps)
-        pred_bbox = outputs["pred_boxes"].flatten(0, 1)
+        out_prob = (
+            outputs["pred_logits"].flatten(0, 1).sigmoid().clamp(self.eps, 1 - self.eps)
+        )  # (bs*nq, L)
+        pred_bbox = outputs["pred_boxes"].flatten(0, 1)  # (bs*nq, 4) normalized cxcywh
 
-        # Normalize target boxes per image
+        # normalize target boxes by image size (to match model output scale)
         tgt_boxes_list: list[torch.Tensor] = []
         for t in targets:
             h, w = t["size"]
             scale = torch.tensor([w, h, w, h], dtype=torch.float32, device=pred_bbox.device)
             tgt_boxes_list.append(t["boxes"].to(pred_bbox.device) / scale)
-        tgt_bbox = torch.cat(tgt_boxes_list)
+        tgt_bbox = torch.cat(tgt_boxes_list, dim=0)  # (sumT, 4)
 
-        # Build positive maps using per-target encoding (no shared tokenized needed)
+        # build positive maps per-image (N_i, L)
         pos_maps: list[torch.Tensor] = []
         for t in targets:
             spans = [t["cat2tokenspan"][cls] for cls in t["str_cls_lst"]]
-            pm = create_positive_map_from_span(t["encoding"], spans, max_text_len=MAX_TEXT_LEN)
+            pm = create_positive_map_from_span(
+                t["encoding"], spans, max_text_len=MAX_TEXT_LEN
+            )
             pos_maps.append(pm.to(out_prob.device))
-        tgt_labels = torch.cat(pos_maps, dim=0)
+        tgt_labels = torch.cat(pos_maps, dim=0)  # (sumT, L)
 
         norm_tgt = tgt_labels / (tgt_labels.sum(dim=1, keepdim=True) + self.eps)
-        cost_class = -(out_prob.unsqueeze(1) * norm_tgt.unsqueeze(0).float()).sum(-1)
-        cost_bbox = torch.cdist(pred_bbox, tgt_bbox, p=1)
+        cost_class = -(out_prob.unsqueeze(1) * norm_tgt.unsqueeze(0).float()).sum(-1)  # (bs*nq, sumT)
+        cost_bbox = torch.cdist(pred_bbox, tgt_bbox, p=1)  # (bs*nq, sumT)
         cost_giou = -generalized_box_iou(
-            box_cxcywh_to_xyxy(pred_bbox), box_cxcywh_to_xyxy(tgt_bbox)
+            box_cxcywh_to_xyxy(pred_bbox),
+            box_cxcywh_to_xyxy(tgt_bbox),
         ).clamp(min=-1.0)
 
-        C = (self.cost_class * cost_class + self.cost_bbox * cost_bbox + self.cost_giou * cost_giou)
+        C = self.cost_class * cost_class + self.cost_bbox * cost_bbox + self.cost_giou * cost_giou
         C = C.view(bs, num_queries, -1).cpu()
 
         sizes = [len(t["boxes"]) for t in targets]
@@ -304,7 +330,7 @@ class HungarianMatcher(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# SetCriterion
+# SetCriterion (losses)
 # ---------------------------------------------------------------------------
 
 
@@ -321,8 +347,13 @@ def _sigmoid_focal_loss(
     ce = F.binary_cross_entropy_with_logits(pred, target.float(), reduction="none")
     p_t = p * target + (1 - p) * (1 - target)
     focal_w = (alpha * target + (1 - alpha) * (1 - target)) * (1 - p_t).pow(gamma)
+
+    # treat unmatched queries as "eos/background" with lower weight
     weight = torch.where(valid_mask, torch.ones_like(ce), torch.full_like(ce, eos_coef))
+
+    # also mask padding tokens in the text sequence
     text_mask_exp = text_mask.unsqueeze(1).expand_as(pred)
+
     loss = (focal_w * ce * weight * text_mask_exp).sum()
     normalizer = text_mask_exp.float().sum().clamp(min=1)
     return loss / normalizer
@@ -350,8 +381,8 @@ class SetCriterion(nn.Module):
         bs, nq, nc = outputs["pred_logits"].shape
         device = outputs["pred_logits"].device
 
-        # text_mask: (bs, nc) — which token positions are real (not padding)
-        raw_mask = outputs["text_mask"].to(device)  # (bs, L) from processor attention_mask
+        # attention mask from processor is (bs, L). model pred_logits last dim is also L-like.
+        raw_mask = outputs["text_mask"].to(device)  # (bs, Lproc)
         L = raw_mask.shape[1]
         if L < nc:
             text_mask = F.pad(raw_mask.float(), (0, nc - L)).bool()
@@ -370,7 +401,11 @@ class SetCriterion(nn.Module):
             offset += n_tgt
 
         loss = _sigmoid_focal_loss(
-            outputs["pred_logits"], target_labels, valid_mask, text_mask, eos_coef=self.eos_coef
+            outputs["pred_logits"],
+            target_labels,
+            valid_mask,
+            text_mask,
+            eos_coef=self.eos_coef,
         )
         return {"loss_ce": loss}
 
@@ -383,22 +418,31 @@ class SetCriterion(nn.Module):
         pred_boxes = outputs["pred_boxes"]
         device = pred_boxes.device
 
-        batch_idx = torch.cat([torch.full((len(i),), b, dtype=torch.long) for b, (i, _) in enumerate(indices)])
-        src_idx = torch.cat([i for i, _ in indices])
+        batch_idx = torch.cat(
+            [torch.full((len(i),), b, dtype=torch.long, device=device) for b, (i, _) in enumerate(indices)]
+        )
+        src_idx = torch.cat([i.to(device) for i, _ in indices])
         src_boxes = pred_boxes[batch_idx, src_idx]
 
         tgt_boxes_norm: list[torch.Tensor] = []
         for t, (_, j) in zip(targets, indices):
             h, w = t["size"]
             scale = torch.tensor([w, h, w, h], dtype=torch.float32, device=device)
-            tgt_boxes_norm.append(t["boxes"].to(device)[j] / scale)
-        tgt_boxes = torch.cat(tgt_boxes_norm)
+            tgt_boxes_norm.append(t["boxes"].to(device)[j.to(device)] / scale)
+        tgt_boxes = torch.cat(tgt_boxes_norm, dim=0)
 
         n = max(tgt_boxes.shape[0], 1)
         loss_bbox = F.l1_loss(src_boxes, tgt_boxes, reduction="sum") / n
         loss_giou = (
-            1 - torch.diag(generalized_box_iou(box_cxcywh_to_xyxy(src_boxes), box_cxcywh_to_xyxy(tgt_boxes)))
+            1
+            - torch.diag(
+                generalized_box_iou(
+                    box_cxcywh_to_xyxy(src_boxes),
+                    box_cxcywh_to_xyxy(tgt_boxes),
+                )
+            )
         ).sum() / n
+
         return {"loss_bbox": loss_bbox, "loss_giou": loss_giou}
 
     def forward(self, outputs: dict, targets: list[dict]) -> dict[str, torch.Tensor]:
@@ -448,6 +492,7 @@ class GroundingDINOTrainer:
             lr=lr,
             weight_decay=1e-4,
         )
+
         total_steps = steps_per_epoch * num_epochs
         self.scheduler = OneCycleLR(
             self.optimizer,
@@ -456,11 +501,13 @@ class GroundingDINOTrainer:
             pct_start=0.1,
             anneal_strategy="cos",
         )
-        self.scaler = torch.cuda.amp.GradScaler() if use_amp else None
+
+        self.scaler = torch.cuda.amp.GradScaler() if (use_amp and device.type == "cuda") else None
 
     def _prepare_batch(self, batch: tuple) -> tuple[dict, list[dict]]:
         inputs, targets = batch
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        # keep non-tensor fields; move needed tensors
         for t in targets:
             t["boxes"] = t["boxes"].to(self.device)
             t["size"] = t["size"].to(self.device)
@@ -469,31 +516,29 @@ class GroundingDINOTrainer:
     def _forward(self, inputs: dict, step_idx: int = -1) -> dict:
         outputs = self.model(**inputs)
         if step_idx == 0:
-            print(f"  [debug] pred_logits: {outputs.pred_logits.shape}  pred_boxes: {outputs.pred_boxes.shape}")
+            print(
+                f"  [debug] pred_logits: {outputs.pred_logits.shape}  pred_boxes: {outputs.pred_boxes.shape}"
+            )
         return {
-            "pred_logits": outputs.pred_logits,   # (bs, nq, text_len)
-            "pred_boxes": outputs.pred_boxes,       # (bs, nq, 4)
-            "text_mask": inputs["attention_mask"],  # (bs, text_len)
+            "pred_logits": outputs.pred_logits,        # (bs, nq, text_len)
+            "pred_boxes": outputs.pred_boxes,          # (bs, nq, 4)
+            "text_mask": inputs["attention_mask"],     # (bs, text_len)
         }
 
     def train_step(self, batch: tuple, step_idx: int) -> dict[str, float]:
         self.model.train()
         inputs, targets = self._prepare_batch(batch)
 
-        try:
-            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
-                output_dict = self._forward(inputs, targets, step_idx)
-                loss_dict = self.criterion(output_dict, targets)
-                if step_idx == 0:
-                    print(f"  [debug] loss_dict: { {k: round(v.item(), 4) for k, v in loss_dict.items()} }")
-                total_loss = sum(
-                    loss_dict[k] * self.weight_dict.get(k, 1.0) for k in loss_dict
-                ) / self.grad_accum_steps
-        except Exception as e:
-            import traceback
-            print(f"  [step {step_idx}] forward error: {e}")
-            traceback.print_exc()
-            return {}
+        with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+            output_dict = self._forward(inputs, step_idx=step_idx)
+            loss_dict = self.criterion(output_dict, targets)
+            if step_idx == 0:
+                print(f"  [debug] loss_dict: { {k: round(v.item(), 4) for k, v in loss_dict.items()} }")
+
+            total_loss = (
+                sum(loss_dict[k] * self.weight_dict.get(k, 1.0) for k in loss_dict)
+                / self.grad_accum_steps
+            )
 
         if self.scaler is not None:
             self.scaler.scale(total_loss).backward()
@@ -503,13 +548,16 @@ class GroundingDINOTrainer:
         if (step_idx + 1) % self.grad_accum_steps == 0:
             if self.scaler is not None:
                 self.scaler.unscale_(self.optimizer)
+
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+
             if self.scaler is not None:
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 self.optimizer.step()
-            self.optimizer.zero_grad()
+
+            self.optimizer.zero_grad(set_to_none=True)
             self.scheduler.step()
 
         return {k: v.item() for k, v in loss_dict.items()}
@@ -519,23 +567,23 @@ class GroundingDINOTrainer:
         self.model.eval()
         totals: dict[str, float] = defaultdict(float)
         n = 0
+
         for batch in val_loader:
             inputs, targets = self._prepare_batch(batch)
-            try:
-                with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
-                    output_dict = self._forward(inputs, targets)
-                    loss_dict = self.criterion(output_dict, targets)
-            except Exception as e:
-                print(f"  [val] forward error: {e}")
-                continue
+            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+                output_dict = self._forward(inputs, step_idx=-1)
+                loss_dict = self.criterion(output_dict, targets)
+
             if n == 0:
                 print(f"  [val debug] { {k: round(v.item(), 4) for k, v in loss_dict.items()} }")
+
             for k, v in loss_dict.items():
                 totals[k] += v.item()
             totals["total_loss"] += sum(
                 loss_dict[k].item() * self.weight_dict.get(k, 1.0) for k in loss_dict
             )
             n += 1
+
         return {k: v / max(n, 1) for k, v in totals.items()}
 
     def save(self, path: str, epoch: int, losses: dict) -> None:
@@ -580,8 +628,12 @@ def main() -> None:
     parser.add_argument("--no-freeze", action="store_true", default=False)
     parser.add_argument("--no-amp", action="store_true", default=False)
     parser.add_argument("--neg-rate", type=float, default=0.5)
-    parser.add_argument("--num-workers", type=int, default=0,
-                        help="0 is safest with HF BatchEncoding in targets")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="0 is safest with HF BatchEncoding inside targets",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -596,7 +648,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- Model + processor (auto-downloaded from HuggingFace Hub) ----
+    # ---- Model + processor ----
     print(f"Loading {MODEL_ID} ...")
     processor = AutoProcessor.from_pretrained(MODEL_ID)
     model = GroundingDinoForObjectDetection.from_pretrained(MODEL_ID)
@@ -606,33 +658,54 @@ def main() -> None:
     # ---- Datasets ----
     def make_ds(ann: str, img: str) -> COCOGroundingDataset:
         return COCOGroundingDataset(
-            ann, img, processor,
+            ann,
+            img,
+            processor,
             negative_sampling_rate=args.neg_rate,
             extra_classes=EXTRA_NEGATIVE_CLASSES,
         )
 
-    train_ds = ConcatDataset([
-        make_ds("Bricks.v1i.coco/train/_annotations.coco.json", "Bricks.v1i.coco/train"),
-        make_ds("OUTLET.v1i.coco.balanced/train/_annotations.coco.json", "OUTLET.v1i.coco/train"),
-    ])
-    val_ds = ConcatDataset([
-        make_ds("Bricks.v1i.coco/valid/_annotations.coco.json", "Bricks.v1i.coco/valid"),
-        make_ds("OUTLET.v1i.coco.balanced/valid/_annotations.coco.json", "OUTLET.v1i.coco/valid"),
-    ])
+    train_ds = ConcatDataset(
+        [
+            make_ds("Bricks.v1i.coco/train/_annotations.coco.json", "Bricks.v1i.coco/train"),
+            make_ds(
+                "OUTLET.v1i.coco.balanced/train/_annotations.coco.json",
+                "OUTLET.v1i.coco/train",
+            ),
+        ]
+    )
+    val_ds = ConcatDataset(
+        [
+            make_ds("Bricks.v1i.coco/valid/_annotations.coco.json", "Bricks.v1i.coco/valid"),
+            make_ds(
+                "OUTLET.v1i.coco.balanced/valid/_annotations.coco.json",
+                "OUTLET.v1i.coco/valid",
+            ),
+        ]
+    )
+
     print(f"Train: {len(train_ds)}  |  Val: {len(val_ds)}")
 
     collate_fn = make_collate_fn(processor)
+
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True,
-        collate_fn=collate_fn, num_workers=args.num_workers,
+        train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=collate_fn,
+        num_workers=args.num_workers,
         pin_memory=False,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=1, shuffle=False,
-        collate_fn=collate_fn, num_workers=args.num_workers,
+        val_ds,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=collate_fn,
+        num_workers=args.num_workers,
+        pin_memory=False,
     )
 
-    steps_per_epoch = max(len(train_ds) // args.batch_size, 1)
+    steps_per_epoch = max(len(train_loader), 1)
     trainer = GroundingDINOTrainer(
         model=model,
         device=device,
@@ -642,7 +715,7 @@ def main() -> None:
         use_amp=use_amp,
         grad_accum_steps=args.grad_accum,
     )
-    trainer.optimizer.zero_grad()
+    trainer.optimizer.zero_grad(set_to_none=True)
 
     # ---- Training loop ----
     best_val_loss = float("inf")
