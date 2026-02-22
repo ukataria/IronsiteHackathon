@@ -70,7 +70,7 @@ class AnchorDetector:
         else:
             # Use pretrained YOLO for now (we'll detect generic objects)
             # In production, this would be a model fine-tuned on construction anchors
-            self.model = YOLO("yolov8n.pt")  # Nano model for speed
+            self.model = YOLO("yolov8x.pt")  # Extra Large model for best accuracy
 
         self.model.to(device)
 
