@@ -82,7 +82,7 @@ class VLMOnlyCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=10,
+            max_tokens=50,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -104,8 +104,9 @@ class VLMPlusDepthCondition(AblationCondition):
 
     def query_distance(self, image_path, point1, point2, prompt, **kwargs):
         """Augment prompt with depth values at the two points."""
-        # Get depth map
-        depth_map = self.depth_estimator.estimate_depth(image_path)
+        # Get depth map from original image (not marked version)
+        original_image = kwargs.get('original_image_path', image_path)
+        depth_map = self.depth_estimator.estimate_depth(original_image)
 
         u1, v1 = point1
         u2, v2 = point2
@@ -138,7 +139,7 @@ class VLMPlusDepthCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=10,
+            max_tokens=50,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -160,8 +161,9 @@ class VLMPlusAnchorsCondition(AblationCondition):
 
     def query_distance(self, image_path, point1, point2, prompt, **kwargs):
         """Augment prompt with detected anchor information."""
-        # Detect anchors
-        anchors = self.anchor_detector.detect(image_path, confidence_threshold=0.01)
+        # Detect anchors on original image (not the marked version)
+        original_image = kwargs.get('original_image_path', image_path)
+        anchors = self.anchor_detector.detect(original_image, confidence_threshold=0.01)
 
         if not anchors:
             # No anchors - same as VLM only
@@ -173,7 +175,7 @@ class VLMPlusAnchorsCondition(AblationCondition):
             client = Anthropic()
             response = client.messages.create(
                 model=self.vlm.model,
-                max_tokens=10,
+                max_tokens=50,
                 temperature=0.0,
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -209,7 +211,7 @@ class VLMPlusAnchorsCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=10,
+            max_tokens=50,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -236,11 +238,12 @@ class FullSpatialAnchorCondition(AblationCondition):
         # Import spatial calibration
         from models.spatial_calibration import SpatialCalibrator
 
-        # Detect anchors
-        anchors = self.anchor_detector.detect(image_path, confidence_threshold=0.01)
+        # Detect anchors on original image (not the marked version)
+        original_image = kwargs.get('original_image_path', image_path)
+        anchors = self.anchor_detector.detect(original_image, confidence_threshold=0.01)
 
-        # Get depth map
-        depth_map = self.depth_estimator.estimate_depth(image_path)
+        # Get depth map from original image
+        depth_map = self.depth_estimator.estimate_depth(original_image)
 
         if not anchors:
             # Fall back to VLM + depth
@@ -272,7 +275,7 @@ class FullSpatialAnchorCondition(AblationCondition):
             client = Anthropic()
             response = client.messages.create(
                 model=self.vlm.model,
-                max_tokens=10,
+                max_tokens=50,
                 temperature=0.0,
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -298,7 +301,7 @@ class FullSpatialAnchorCondition(AblationCondition):
             client = Anthropic()
             response = client.messages.create(
                 model=self.vlm.model,
-                max_tokens=10,
+                max_tokens=50,
                 temperature=0.0,
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -345,7 +348,7 @@ class FullSpatialAnchorCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=10,
+            max_tokens=50,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -366,7 +369,7 @@ def extract_distance_from_response(response_text):
     # Clean the response
     text = response_text.strip().lower()
 
-    # Look for just a number (most common format from Claude with max_tokens=10)
+    # Look for just a number (most common format from Claude with max_tokens=50)
     simple_number = re.search(r'^(\d+\.?\d*)$', text)
     if simple_number:
         try:
@@ -473,7 +476,7 @@ Please provide your answer as a single numerical value in meters."""
 
                 # Query condition
                 result = condition.query_distance(
-                    str(marked_path), point1, point2, prompt
+                    str(marked_path), point1, point2, prompt, original_image_path=str(rgb_path)
                 )
 
                 # Extract predicted distance
