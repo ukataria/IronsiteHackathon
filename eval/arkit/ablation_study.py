@@ -82,7 +82,7 @@ class VLMOnlyCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=50,
+            max_tokens=200,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -123,12 +123,12 @@ class VLMPlusDepthCondition(AblationCondition):
         d2 = get_depth_region(depth_map, u2, v2)
 
         # Augment prompt with depth information
-        depth_info = f"\n\nADDITIONAL DEPTH INFORMATION:\n"
-        depth_info += f"- Estimated depth at point A: {d1:.2f} meters\n"
-        depth_info += f"- Estimated depth at point B: {d2:.2f} meters\n"
-        depth_info += f"This depth information is from a monocular depth estimation model.\n"
+        depth_info = f"\n\nDEPTH MEASUREMENTS:\n"
+        depth_info += f"- Depth at point A: {d1:.2f} meters\n"
+        depth_info += f"- Depth at point B: {d2:.2f} meters\n"
+        depth_info += f"\nUSE THESE DEPTHS: Apply the Euclidean distance formula using these depth values and the pixel coordinates to compute 3D distance.\n"
 
-        augmented_prompt = prompt + depth_info
+        augmented_prompt = prompt + "\n" + depth_info
 
         # Query VLM with augmented prompt
         import base64
@@ -139,7 +139,7 @@ class VLMPlusDepthCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=50,
+            max_tokens=200,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -199,9 +199,9 @@ class VLMPlusAnchorsCondition(AblationCondition):
             anchor_info += f"   - Pixel width: {anchor.pixel_width:.0f} pixels\n"
             anchor_info += f"   - Confidence: {anchor.confidence:.2f}\n\n"
 
-        anchor_info += "You can use these known dimensions to help calibrate your distance estimate.\n"
+        anchor_info += "\nUSE THESE KNOWN DIMENSIONS: Compare the pixel distances to the known physical dimensions above to estimate the pixel-to-meter scale, then apply this scale to compute the distance between points A and B.\n"
 
-        augmented_prompt = prompt + anchor_info
+        augmented_prompt = prompt + "\n" + anchor_info
 
         # Query VLM
         import base64
@@ -212,7 +212,7 @@ class VLMPlusAnchorsCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=50,
+            max_tokens=200,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -350,7 +350,7 @@ class FullSpatialAnchorCondition(AblationCondition):
         client = Anthropic()
         response = client.messages.create(
             model=self.vlm.model,
-            max_tokens=50,
+            max_tokens=200,
             temperature=0.0,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -467,11 +467,11 @@ def run_ablation_study(data_dir, num_images, pairs_per_image, output_dir, device
                 create_marked_image(rgb_path, point1, point2, marked_path)
 
                 # Create prompt
-                prompt = f"""What is the 3D Euclidean distance in meters between
-            point A (red cross at pixel {point1}) and
-            point B (blue cross at pixel {point2})?
+                prompt = f"""What is the 3D Euclidean distance in meters between point A (red cross) and point B (blue cross)?
 
-Please provide your answer as a single numerical value in meters."""
+IMPORTANT: If additional calibration information is provided below, you MUST use it to compute your answer. Do not guess - use the provided measurements.
+
+Answer with only a single number in meters."""
 
                 print(f"\n  [{query_idx}/{total_pairs}] Image {img_idx}, Pair {query_idx % pairs_per_image}")
                 print(f"  Ground Truth: {gt_distance:.2f}m")
