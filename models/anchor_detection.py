@@ -259,6 +259,9 @@ class AnchorDetector:
             ANCHOR_DIMENSIONS["cup_width"] = 3.5
             return "cup_width"
 
+        # Calculate aspect ratio early for person detection
+        aspect_ratio = height / width if width > 0 else 0
+
         if "person" in class_lower:
             # Use for scale - average adult height ~66 inches (5'6")
             # But use shoulder width as more reliable anchor ~18 inches
@@ -325,8 +328,7 @@ class AnchorDetector:
             return "umbrella_length"
 
         # Fall back to aspect ratio heuristics for generic objects
-        aspect_ratio = height / width if width > 0 else 0
-
+        # (aspect_ratio already calculated above)
         if aspect_ratio > 2.0 and width > 20:  # Tall vertical object
             # Could be a door frame, window, or vertical structure
             ANCHOR_DIMENSIONS["vertical_element"] = 36.0  # Assume ~3ft wide
