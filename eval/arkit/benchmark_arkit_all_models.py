@@ -331,7 +331,13 @@ def plot_results(results_by_model, output_path):
 
     # 1. MAE comparison
     ax = axes[0, 0]
-    colors = {"closed": "blue", "open-research": "green", "edge": "orange", "two-head": "red"}
+    colors = {
+        "closed": "#1f77b4",           # Blue
+        "api-hosted": "#ff7f0e",       # Orange
+        "open-research": "#2ca02c",    # Green
+        "edge": "#d62728",             # Red
+        "two-head": "#9467bd"          # Purple
+    }
     bar_colors = [colors.get(row["category"], "gray") for _, row in df.iterrows()]
 
     ax.barh(df["model"], df["mae"], color=bar_colors)
@@ -340,13 +346,20 @@ def plot_results(results_by_model, output_path):
     ax.invert_yaxis()
     ax.grid(axis='x', alpha=0.3)
 
+    # Add value labels on bars
+    for idx, (_, row) in enumerate(df.iterrows()):
+        if not np.isnan(row["mae"]):
+            ax.text(row["mae"] + 0.05, idx, f'{row["mae"]:.2f}m',
+                   va='center', fontsize=9, fontweight='bold')
+
     # Add legend
     from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor='blue', label='Closed Source'),
-        Patch(facecolor='red', label='Two-Head (Ours)')
+        Patch(facecolor=colors["closed"], label='Closed Source (OpenAI/Anthropic/Google)'),
+        Patch(facecolor=colors["api-hosted"], label='API-Hosted Open (Llama 3.2)'),
+        Patch(facecolor=colors["two-head"], label='Two-Head (Ours)')
     ]
-    ax.legend(handles=legend_elements, loc='lower right')
+    ax.legend(handles=legend_elements, loc='lower right', fontsize=9)
 
     # 2. Success rate
     ax = axes[0, 1]
@@ -365,16 +378,34 @@ def plot_results(results_by_model, output_path):
     ax.invert_yaxis()
     ax.grid(axis='x', alpha=0.3)
 
-    # 4. Error distribution
+    # 4. Error distribution box plot
     ax = axes[1, 1]
-    category_stats = df.groupby("category").agg({"mae": "mean", "success_rate": "mean"})
-    category_stats.plot(kind="bar", ax=ax, color=["blue", "green"])
-    ax.set_xlabel("Category", fontsize=12)
-    ax.set_ylabel("Value", fontsize=12)
-    ax.set_title("Average Performance by Category", fontsize=14, fontweight="bold")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-    ax.legend(["MAE (m)", "Success Rate (%)"], loc='upper right')
-    ax.grid(axis='y', alpha=0.3)
+
+    # Prepare data for box plot
+    error_data = []
+    labels = []
+    for model_name, results in results_by_model.items():
+        successful = [r for r in results if r["predicted_distance"] is not None]
+        if successful:
+            errors = [abs(r["predicted_distance"] - r["gt_distance"]) for r in successful]
+            error_data.append(errors)
+            labels.append(model_name)
+
+    if error_data:
+        bp = ax.boxplot(error_data, labels=labels, vert=False, patch_artist=True)
+
+        # Color boxes by category
+        for patch, label in zip(bp['boxes'], labels):
+            if label in MODELS:
+                category = MODELS[label]["category"]
+                patch.set_facecolor(colors.get(category, "gray"))
+                patch.set_alpha(0.6)
+
+        ax.set_xlabel("Absolute Error (meters)", fontsize=12)
+        ax.set_title("Error Distribution by Model", fontsize=14, fontweight="bold")
+        ax.grid(axis='x', alpha=0.3)
+    else:
+        ax.text(0.5, 0.5, "No data to display", ha='center', va='center', transform=ax.transAxes)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
