@@ -108,7 +108,9 @@ def build_standards_block(measurements: dict) -> str:
 # Condition 1 — Baseline (raw VLM, no augmentation)
 # ---------------------------------------------------------------------------
 
-BASELINE_PROMPT_TEMPLATE = """Inspect this construction image and answer the following question:
+BASELINE_PROMPT_TEMPLATE = """Inspect this construction image and answer the following question. \
+If additional images are provided (e.g. depth map or Canny edges), you may use them to support \
+your inspection.
 
 {question}
 
@@ -125,7 +127,9 @@ Note: You are working from visual estimation only — no calibrated measurements
 # ---------------------------------------------------------------------------
 
 DEPTH_AUGMENTED_PROMPT_TEMPLATE = """Inspect this construction image. A depth map visualization \
-has been provided as a second image to help you understand spatial relationships.
+has been provided as a second image to help you understand spatial relationships. \
+If a third image (Canny edges) is provided, use it to identify sharp boundaries \
+and structural edges (e.g. joints, openings, material boundaries).
 
 Question: {question}
 
@@ -149,12 +153,14 @@ Note: You have relative depth information but no calibrated real-world measureme
 # ---------------------------------------------------------------------------
 
 ANCHOR_CALIBRATED_PROMPT_TEMPLATE = """You are inspecting a construction site. \
-Two images have been provided:
+Two or three images have been provided:
   Image 1: Original construction photo
   Image 2: Depth map (jet colormap — red/warm = closer to camera, blue/cool = farther away)
+  Image 3 (if provided): Canny edge map — white edges on black; use it to identify \
+sharp boundaries, joints, and structural edges.
 
 Use the depth map to understand spatial layout and which surfaces share the same plane. \
-Use the calibrated measurements to answer questions in real-world inches.
+Use pixel counts and calibrated measurements to answer questions in real-world inches.
 
 Question: {question}
 
@@ -168,6 +174,12 @@ Calibration method: known physical dimensions of detected objects (bricks, CMU, 
 
 {measurements_block}
 
+If the user asks you something regarding the distance of an object or between objects, use the pixel measurements to answer. Always show your reasoning, referencing the measurements and visual cues in the image. Do not guess distances without referencing a known object or measurement.
+For example, if asked about the width of a door and a brick is provided as a detected object, you may try to estimate how many bricks wide the door is and then use that to determine the real-world width.
+Don't let your knowledge of typical dimensions override the actual measurements provided — if the scale bar was calibrated using the long dimension of bricks, use that for reference regardless of the bricks' orientation in the image. The pixel-method result should override anything else. 
+"""
+
+'''
 ━━━ APPLICABLE CONSTRUCTION STANDARDS ━━━
 {standards_block}
 
@@ -179,7 +191,8 @@ Provide a structured inspection report:
 1. Per-element pass/fail with exact measurements
 2. Specific deficiencies with locations
 3. Severity ratings (critical / major / minor)
-4. Overall pass/fail recommendation"""
+4. Overall pass/fail recommendation
+'''
 
 
 # Human-readable descriptions of each detectable object type's real-world dimensions.

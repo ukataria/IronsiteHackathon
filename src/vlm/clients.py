@@ -41,15 +41,17 @@ def call_claude(
     prompt: str,
     image_path: str | None = None,
     secondary_image_path: str | None = None,
+    tertiary_image_path: str | None = None,
     system: str = INSPECTION_SYSTEM_PROMPT,
     cache_key: str = "",
     model: str = "claude-sonnet-4-6",
 ) -> str:
-    """Call Claude API with disk caching. Supports two images."""
+    """Call Claude API with disk caching. Supports up to three images (e.g. photo, depth, canny)."""
     import anthropic
 
     image_b64 = image_to_base64(image_path) if image_path else None
     secondary_b64 = image_to_base64(secondary_image_path) if secondary_image_path else None
+    tertiary_b64 = image_to_base64(tertiary_image_path) if tertiary_image_path else None
 
     def _call() -> str:
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -69,6 +71,13 @@ def call_claude(
                 "type": "image",
                 "source": {"type": "base64", "media_type": media_type, "data": secondary_b64},
             })
+        if tertiary_image_path and tertiary_b64:
+            suffix = Path(tertiary_image_path).suffix.lower()
+            media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+            content.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": tertiary_b64},
+            })
         content.append({"type": "text", "text": prompt})
 
         messages = [{"role": "user", "content": content}]
@@ -81,10 +90,14 @@ def call_claude(
         )
         return response.content[0].text
 
-    secondary_key = f":{secondary_b64[:8]}" if secondary_b64 else ""
+    extra_key = ""
+    if secondary_b64:
+        extra_key += f":{secondary_b64[:8]}"
+    if tertiary_b64:
+        extra_key += f":{tertiary_b64[:8]}"
     try:
         return cached_api_call(
-            prompt=f"claude:{model}:{cache_key}{secondary_key}:{prompt}",
+            prompt=f"claude:{model}:{cache_key}{extra_key}:{prompt}",
             call_fn=_call,
             image_b64=image_b64,
         )
@@ -101,14 +114,18 @@ def call_claude(
 def call_gpt4o(
     prompt: str,
     image_path: str | None = None,
+    secondary_image_path: str | None = None,
+    tertiary_image_path: str | None = None,
     system: str = INSPECTION_SYSTEM_PROMPT,
     cache_key: str = "",
     model: str = "gpt-4o",
 ) -> str:
-    """Call OpenAI GPT-4o API with disk caching. Returns response text."""
+    """Call OpenAI GPT-4o API with disk caching. Supports up to three images."""
     import openai
 
     image_b64 = image_to_base64(image_path) if image_path else None
+    secondary_b64 = image_to_base64(secondary_image_path) if secondary_image_path else None
+    tertiary_b64 = image_to_base64(tertiary_image_path) if tertiary_image_path else None
 
     def _call() -> str:
         client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -120,6 +137,20 @@ def call_gpt4o(
             user_content.append({
                 "type": "image_url",
                 "image_url": {"url": f"data:{media_type};base64,{image_b64}"},
+            })
+        if secondary_image_path and secondary_b64:
+            suffix = Path(secondary_image_path).suffix.lower()
+            media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{media_type};base64,{secondary_b64}"},
+            })
+        if tertiary_image_path and tertiary_b64:
+            suffix = Path(tertiary_image_path).suffix.lower()
+            media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{media_type};base64,{tertiary_b64}"},
             })
         user_content.append({"type": "text", "text": prompt})
 
@@ -133,9 +164,12 @@ def call_gpt4o(
         )
         return response.choices[0].message.content or ""
 
+    extra_key = f":{secondary_b64[:8]}" if secondary_b64 else ""
+    if tertiary_b64:
+        extra_key += f":{tertiary_b64[:8]}"
     try:
         return cached_api_call(
-            prompt=f"openai:{model}:{cache_key}:{prompt}",
+            prompt=f"openai:{model}:{cache_key}{extra_key}:{prompt}",
             call_fn=_call,
             image_b64=image_b64,
         )
@@ -152,14 +186,18 @@ def call_gpt4o(
 def call_ollama(
     prompt: str,
     image_path: str | None = None,
+    secondary_image_path: str | None = None,
+    tertiary_image_path: str | None = None,
     system: str = INSPECTION_SYSTEM_PROMPT,
     cache_key: str = "",
     model: str = "llava",
 ) -> str:
-    """Call a local Ollama model via its OpenAI-compatible API. Returns response text."""
+    """Call a local Ollama model via its OpenAI-compatible API. Supports up to three images."""
     import openai
 
     image_b64 = image_to_base64(image_path) if image_path else None
+    secondary_b64 = image_to_base64(secondary_image_path) if secondary_image_path else None
+    tertiary_b64 = image_to_base64(tertiary_image_path) if tertiary_image_path else None
 
     def _call() -> str:
         client = openai.OpenAI(
@@ -175,6 +213,20 @@ def call_ollama(
                 "type": "image_url",
                 "image_url": {"url": f"data:{media_type};base64,{image_b64}"},
             })
+        if secondary_image_path and secondary_b64:
+            suffix = Path(secondary_image_path).suffix.lower()
+            media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{media_type};base64,{secondary_b64}"},
+            })
+        if tertiary_image_path and tertiary_b64:
+            suffix = Path(tertiary_image_path).suffix.lower()
+            media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{media_type};base64,{tertiary_b64}"},
+            })
         user_content.append({"type": "text", "text": prompt})
 
         response = client.chat.completions.create(
@@ -187,9 +239,12 @@ def call_ollama(
         )
         return response.choices[0].message.content or ""
 
+    extra_key = f":{secondary_b64[:8]}" if secondary_b64 else ""
+    if tertiary_b64:
+        extra_key += f":{tertiary_b64[:8]}"
     try:
         return cached_api_call(
-            prompt=f"ollama:{model}:{cache_key}:{prompt}",
+            prompt=f"ollama:{model}:{cache_key}{extra_key}:{prompt}",
             call_fn=_call,
             image_b64=image_b64,
         )
@@ -208,6 +263,7 @@ def run_inspection(
     measurements_json_path: str,
     depth_png_path: str | None,
     condition: str,
+    canny_png_path: str | None = None,
     vlm: str = "claude",
     model: str | None = None,
     output_dir: str = "data/results",
@@ -220,6 +276,9 @@ def run_inspection(
     vlm: 'claude' | 'gpt4o' | 'ollama'
     model: override the default model for the chosen vlm
 
+    Images sent to VLM: primary = construction photo; secondary = depth map (if present);
+    tertiary = Canny edge map (if present).
+
     Saves: {output_dir}/{image_id}_{condition}_{vlm}.json
     Returns the result dict.
     """
@@ -229,17 +288,20 @@ def run_inspection(
     measurements = load_json(measurements_json_path) if Path(measurements_json_path).exists() else {}
 
     depth_exists = depth_png_path and Path(depth_png_path).exists()
+    canny_exists = canny_png_path and Path(canny_png_path).exists()
 
     # Build prompt per condition
     if condition == "baseline":
         prompt = BASELINE_PROMPT_TEMPLATE.format(question=question)
         primary_image = image_path
-        secondary_image = None
+        secondary_image = depth_png_path if depth_exists else None
+        tertiary_image = canny_png_path if canny_exists else None
 
     elif condition == "depth":
         prompt = DEPTH_AUGMENTED_PROMPT_TEMPLATE.format(question=question)
         primary_image = image_path
         secondary_image = depth_png_path if depth_exists else None
+        tertiary_image = canny_png_path if canny_exists else None
 
     elif condition == "anchor_calibrated":
         mblock = format_measurements_block(measurements)
@@ -255,26 +317,27 @@ def run_inspection(
         )
         primary_image = image_path
         secondary_image = depth_png_path if depth_exists else None
+        tertiary_image = canny_png_path if canny_exists else None
 
     else:
         raise ValueError(f"Unknown condition: {condition}. Use 'baseline', 'depth', or 'anchor_calibrated'.")
 
-    # Select VLM caller
+    # Select VLM caller (all support primary + optional secondary + optional tertiary)
     if vlm == "claude":
         response = call_claude(
-            prompt, primary_image, secondary_image,
+            prompt, primary_image, secondary_image, tertiary_image,
             cache_key=cache_key,
             model=model or "claude-sonnet-4-6",
         )
     elif vlm == "ollama":
         response = call_ollama(
-            prompt, primary_image,
+            prompt, primary_image, secondary_image, tertiary_image,
             cache_key=cache_key,
             model=model or "gemma3:27b-it-q8_0",
         )
     else:
         response = call_gpt4o(
-            prompt, primary_image,
+            prompt, primary_image, secondary_image, tertiary_image,
             cache_key=cache_key,
             model=model or "gpt-4o",
         )
