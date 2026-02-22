@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cd /c/Users/visha/Projects/IronsiteHackathon && uv init --no-readme 2>&1)"
-    ]
-  }
-}
