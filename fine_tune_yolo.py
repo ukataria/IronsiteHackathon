@@ -87,11 +87,14 @@ def merge_datasets(yaml_paths, output_dir, max_per_split: int | None = None, max
 
         # data["names"] can be a dict {0: "brick", 1: "outlet"} or list ["brick", "outlet"]
         names = data.get("names", {})
+        yaml_name = Path(yp).name
         if isinstance(names, dict):
             names = {int(k): v for k, v in names.items()}
-            sorted_names = [names[k] for k in sorted(names.keys())]
+            sorted_names = [str(names[k]) for k in sorted(names.keys())]
         else:
-            sorted_names = list(names)
+            sorted_names = [str(n) for n in names]
+
+        print(f"\n  {yaml_name} classes: {sorted_names}")
 
         for class_name in sorted_names:
             if class_name not in name_to_id:
