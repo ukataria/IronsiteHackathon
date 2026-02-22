@@ -5,6 +5,7 @@ import { CalibrationPanel } from '@/components/PreCheck/CalibrationPanel';
 import { FindingsFeed } from '@/components/PreCheck/FindingsFeed';
 import { SpatialQA } from '@/components/PreCheck/SpatialQA';
 import { AlertManager } from '@/components/PreCheck/AlertManager';
+import { LiveInspector } from '@/components/PreCheck/LiveInspector';
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -15,6 +16,7 @@ import type { Finding, AlertData } from '@/components/PreCheck/types';
 const demoData = generateDemoData();
 
 const Index = () => {
+  const [mode, setMode] = useState<'demo' | 'live'>('demo');
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [findings, setFindings] = useState<Finding[]>([]);
@@ -132,17 +134,59 @@ const Index = () => {
     setAlerts(prev => prev.filter(a => a.id !== id));
   }, []);
 
+  if (mode === 'live') {
+    return (
+      <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+        <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
+          <div className="flex items-center gap-3">
+            <h1 className="text-sm font-bold tracking-wide text-primary">DEEPANCHORED</h1>
+            <span className="text-[10px] text-muted-foreground font-mono">v1.0 LIVE</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded overflow-hidden border border-border text-[10px] font-mono">
+              <button
+                onClick={() => setMode('demo')}
+                className="px-3 py-1 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                DEMO
+              </button>
+              <button
+                className="px-3 py-1 bg-primary text-primary-foreground"
+              >
+                LIVE
+              </button>
+            </div>
+          </div>
+        </header>
+        <LiveInspector />
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-sm font-bold tracking-wide text-primary">PRECHECK</h1>
+          <h1 className="text-sm font-bold tracking-wide text-primary">DEEPANCHORED</h1>
           <span className="text-[10px] text-muted-foreground font-mono">v1.0 DEMO</span>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <div className="flex rounded overflow-hidden border border-border text-[10px] font-mono mr-3">
+            <button
+              className="px-3 py-1 bg-primary text-primary-foreground"
+            >
+              DEMO
+            </button>
+            <button
+              onClick={() => setMode('live')}
+              className="px-3 py-1 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              LIVE
+            </button>
+          </div>
           <span className="status-dot-live" />
-          <span>INSPECTION ACTIVE</span>
+          <span className="text-[10px] font-mono text-muted-foreground">INSPECTION ACTIVE</span>
         </div>
       </header>
 

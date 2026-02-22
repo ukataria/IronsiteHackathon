@@ -27,9 +27,9 @@ const QA_PATTERNS = [
       `Violations detected in this inspection:\n1. Stud bay 4→5: 19.3" (expected 16.0" ± 0.5") — CRITICAL\nStud is 3.3" beyond tolerance.\nUse the timeline to review violation frames (marked in red).`,
   },
   {
-    keywords: ['how', 'work', 'what', 'precheck'],
+    keywords: ['how', 'work', 'what', 'deepanchored'],
     answer: () =>
-      `PreCheck uses known-dimension objects (studs, CMU blocks) visible in the camera feed to compute a pixel-to-inch calibration.\nOnce calibrated, it measures distances between structural elements and checks against building code.\nAll measurements shown are derived from this calibration — no manual input required.`,
+      `DeepAnchored uses known-dimension objects (studs, CMU blocks) visible in the camera feed to compute a pixel-to-inch calibration.\nOnce calibrated, it measures distances between structural elements and checks against building code.\nAll measurements shown are derived from this calibration — no manual input required.`,
   },
 ];
 
@@ -65,7 +65,7 @@ export function SpatialQA({ calibration }: Props) {
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 pt-3 pb-2">
-        <span className="panel-header">Ask PreCheck</span>
+        <span className="panel-header">Ask DeepAnchored</span>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 space-y-3">
@@ -81,7 +81,7 @@ export function SpatialQA({ calibration }: Props) {
               <p className="text-xs text-foreground mt-0.5">{ex.question}</p>
             </div>
             <div>
-              <span className="text-[10px] font-semibold tracking-wider text-primary">PRECHECK</span>
+              <span className="text-[10px] font-semibold tracking-wider text-primary">DEEPANCHORED</span>
               <pre className="text-xs text-foreground mt-0.5 whitespace-pre-wrap font-mono leading-relaxed">
                 {ex.answer}
               </pre>
