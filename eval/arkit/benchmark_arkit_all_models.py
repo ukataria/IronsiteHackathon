@@ -25,6 +25,8 @@ from models.vlm_clients.openai_client import OpenAIVLMClient
 from models.vlm_clients.gemini_client import GeminiVLMClient
 from models.vlm_clients.huggingface_client import HuggingFaceVLMClient
 from models.vlm_clients.twohead_client import TwoHeadVLMClient
+from models.vlm_clients.together_client import TogetherVLMClient
+from models.vlm_clients.replicate_client import ReplicateVLMClient
 
 
 # Model configurations
@@ -92,6 +94,29 @@ MODELS = {
         "model_name": "gemini-1.5-pro",
         "requires_api": True,
         "env_var": "GEMINI_API_KEY"
+    },
+
+    # API-hosted open models
+    "llama-3.2-90b-vision": {
+        "category": "api-hosted",
+        "client_class": TogetherVLMClient,
+        "model_name": "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+        "requires_api": True,
+        "env_var": "TOGETHER_API_KEY"
+    },
+    "llama-3.2-11b-vision": {
+        "category": "api-hosted",
+        "client_class": TogetherVLMClient,
+        "model_name": "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+        "requires_api": True,
+        "env_var": "TOGETHER_API_KEY"
+    },
+    "llama-3.2-90b-replicate": {
+        "category": "api-hosted",
+        "client_class": ReplicateVLMClient,
+        "model_name": "meta/meta-llama-3.2-90b-vision-instruct",
+        "requires_api": True,
+        "env_var": "REPLICATE_API_TOKEN"
     },
 
     # Open research models
