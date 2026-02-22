@@ -34,7 +34,14 @@ class DepthEstimator:
         # Load Depth Anything V2 from HuggingFace
         from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 
-        model_name = f"depth-anything/Depth-Anything-V2-{model_size.capitalize()}"
+        # Depth Anything V2 model paths on HuggingFace
+        model_paths = {
+            "small": "depth-anything/Depth-Anything-V2-Small-hf",
+            "base": "depth-anything/Depth-Anything-V2-Base-hf",
+            "large": "depth-anything/Depth-Anything-V2-Large-hf"
+        }
+
+        model_name = model_paths.get(model_size.lower(), model_paths["large"])
 
         print(f"Loading {model_name}...")
         self.processor = AutoImageProcessor.from_pretrained(model_name)
