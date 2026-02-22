@@ -176,7 +176,7 @@ class VLMPlusAnchorsCondition(AblationCondition):
             client = Anthropic()
             response = client.messages.create(
                 model=self.vlm.model,
-                max_tokens=50,
+                max_tokens=200,
                 temperature=0.0,
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -277,7 +277,7 @@ class FullSpatialAnchorCondition(AblationCondition):
             client = Anthropic()
             response = client.messages.create(
                 model=self.vlm.model,
-                max_tokens=50,
+                max_tokens=200,
                 temperature=0.0,
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
@@ -303,7 +303,7 @@ class FullSpatialAnchorCondition(AblationCondition):
             client = Anthropic()
             response = client.messages.create(
                 model=self.vlm.model,
-                max_tokens=50,
+                max_tokens=200,
                 temperature=0.0,
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
