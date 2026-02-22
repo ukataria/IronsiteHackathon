@@ -1,0 +1,159 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 16% 5%;
+    --foreground: 35 20% 88%;
+
+    --card: 30 11% 9%;
+    --card-foreground: 35 20% 88%;
+
+    --popover: 30 11% 9%;
+    --popover-foreground: 35 20% 88%;
+
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 15% 15%;
+    --secondary-foreground: 35 20% 78%;
+
+    --muted: 30 10% 12%;
+    --muted-foreground: 30 10% 50%;
+
+    --accent: 25 95% 53%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 353 94% 71%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --info: 189 94% 43%;
+    --info-foreground: 0 0% 100%;
+
+    --warning: 45 93% 47%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 30 15% 15%;
+    --input: 30 15% 15%;
+    --ring: 25 95% 53%;
+
+    --radius: 0.375rem;
+
+    --sidebar-background: 30 11% 9%;
+    --sidebar-foreground: 35 20% 88%;
+    --sidebar-primary: 25 95% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 15% 15%;
+    --sidebar-accent-foreground: 35 20% 78%;
+    --sidebar-border: 30 15% 15%;
+    --sidebar-ring: 25 95% 53%;
+
+    --alert-bg: 351 51% 8%;
+    --alert-border: 353 94% 71%;
+    --alert-text: 350 30% 92%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'Space Mono', monospace !important;
+  }
+}
+
+@layer components {
+  .panel-header {
+    @apply text-[11px] font-semibold tracking-[0.15em] uppercase text-muted-foreground;
+  }
+
+  .panel-divider {
+    @apply border-t border-border my-3;
+  }
+
+  .status-dot {
+    @apply inline-block w-1.5 h-1.5 rounded-full;
+  }
+
+  .status-dot-live {
+    @apply status-dot bg-primary;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  .status-dot-idle {
+    @apply status-dot bg-muted-foreground;
+  }
+
+  .finding-card {
+    @apply p-2.5 rounded border-l-2 bg-card text-card-foreground text-xs cursor-pointer transition-colors hover:bg-secondary;
+  }
+
+  .finding-card-pass {
+    @apply finding-card;
+    border-left-color: hsl(var(--success));
+  }
+
+  .finding-card-fail {
+    @apply finding-card;
+    border-left-color: hsl(var(--destructive));
+  }
+
+  .finding-card-info {
+    @apply finding-card;
+    border-left-color: hsl(var(--info));
+  }
+
+  .alert-toast {
+    @apply rounded border p-3 text-xs;
+    background: hsl(var(--alert-bg));
+    border-color: hsl(var(--alert-border));
+    color: hsl(var(--alert-text));
+    animation: slide-in-top 0.3s ease-out, shake 0.4s ease-out 0.3s;
+  }
+
+  .measure-value {
+    font-family: 'Space Mono', monospace;
+  }
+}
+
+@layer utilities {
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes slide-in-top {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
+  }
+
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  .animate-fade-out {
+    animation: fade-out 0.5s ease-out forwards;
+  }
+}
