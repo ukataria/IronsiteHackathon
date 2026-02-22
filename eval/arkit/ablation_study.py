@@ -52,33 +52,6 @@ def create_marked_image(rgb_path, point1, point2, output_path):
     return output_path
 
 
-def compute_ground_truth_distance(depth_map, point1, point2, intrinsics):
-    """Compute ground truth 3D Euclidean distance using depth map."""
-    u1, v1 = point1
-    u2, v2 = point2
-
-    # Get depth values
-    d1 = depth_map[v1, u1]
-    d2 = depth_map[v2, u2]
-
-    # Get camera intrinsics
-    fx, fy = intrinsics['fx'], intrinsics['fy']
-    cx, cy = intrinsics['cx'], intrinsics['cy']
-
-    # Convert to 3D coordinates
-    x1 = (u1 - cx) * d1 / fx
-    y1 = (v1 - cy) * d1 / fy
-    z1 = d1
-
-    x2 = (u2 - cx) * d2 / fx
-    y2 = (v2 - cy) * d2 / fy
-    z2 = d2
-
-    # Compute Euclidean distance
-    distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2)
-    return float(distance)
-
-
 class AblationCondition:
     """Base class for ablation conditions."""
 
@@ -320,11 +293,6 @@ def run_ablation_study(data_dir, num_images, pairs_per_image, output_dir, device
     print("\nLoading ARKit data...")
     loader = NYUDepthLoader(data_dir)
 
-    # Sample images
-    all_indices = list(range(len(loader)))
-    np.random.seed(42)
-    test_indices = np.random.choice(all_indices, size=min(num_images, len(all_indices)), replace=False)
-
     # Store results
     all_results = {cond_name: [] for cond_name in conditions.keys()}
 
@@ -336,26 +304,29 @@ def run_ablation_study(data_dir, num_images, pairs_per_image, output_dir, device
         print(f"EVALUATING: {cond_name.upper().replace('_', ' ')}")
         print(f"{'='*60}")
 
-        pair_idx = 0
+        query_idx = 0
 
-        for img_idx in tqdm(test_indices, desc=f"{cond_name}"):
-            # Load image and depth
-            rgb_img, depth_map, intrinsics = loader[img_idx]
-            rgb_path = loader.get_rgb_path(img_idx)
+        for img_idx in range(num_images):
+            # Load sample
+            sample = loader.get_sample(img_idx)
+            rgb_path = sample["rgb_path"]
+            depth_map = sample["depth_map"]
 
             # Generate point pairs
             pairs = generate_object_pairs(depth_map, num_pairs=pairs_per_image)
 
-            for point1, point2 in pairs:
-                pair_idx += 1
+            for pair in pairs:
+                point1 = pair["point1"]
+                point2 = pair["point2"]
+                query_idx += 1
 
                 # Compute ground truth
-                gt_distance = compute_ground_truth_distance(depth_map, point1, point2, intrinsics)
+                gt_distance = loader.compute_distance_3d(point1, point2, depth_map)
 
                 # Create marked image
                 marked_dir = output_dir / "marked_images"
                 marked_dir.mkdir(exist_ok=True)
-                marked_path = marked_dir / f"{cond_name}_img{img_idx:04d}_pair{pair_idx}.jpg"
+                marked_path = marked_dir / f"{cond_name}_img{img_idx:04d}_pair{query_idx}.jpg"
                 create_marked_image(rgb_path, point1, point2, marked_path)
 
                 # Create prompt
@@ -365,7 +336,7 @@ def run_ablation_study(data_dir, num_images, pairs_per_image, output_dir, device
 
 Please provide your answer as a single numerical value in meters."""
 
-                print(f"\n  [{pair_idx}/{total_pairs}] Image {img_idx}, Pair {pair_idx % pairs_per_image}")
+                print(f"\n  [{query_idx}/{total_pairs}] Image {img_idx}, Pair {query_idx % pairs_per_image}")
                 print(f"  Ground Truth: {gt_distance:.2f}m")
 
                 # Query condition
@@ -385,10 +356,10 @@ Please provide your answer as a single numerical value in meters."""
                 # Store result
                 all_results[cond_name].append({
                     "image_idx": img_idx,
-                    "pair_idx": pair_idx,
+                    "query_idx": query_idx,
                     "point1": point1,
                     "point2": point2,
-                    "gt_distance": gt_distance,
+                    "gt_distance": float(gt_distance),
                     "predicted_distance": predicted_distance,
                     "response": result["response"],
                     "augmented_prompt": result["augmented_prompt"],
