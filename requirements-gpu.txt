@@ -1,0 +1,41 @@
+# GPU Requirements for Full Benchmark + Two-Head Model
+# Install these on your GPU server before running evals
+
+# Core ML frameworks
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Vision models
+transformers>=4.30.0
+ultralytics>=8.0.0  # YOLOv8 for anchor detection
+timm  # Required by some vision models
+einops  # Required by InternVL3
+
+# Depth estimation
+opencv-python>=4.8.0
+
+# VLM clients
+anthropic>=0.18.0
+openai>=1.0.0
+google-generativeai
+
+# HuggingFace models
+accelerate
+bitsandbytes  # For quantization
+sentencepiece  # Required by some models
+protobuf
+
+# Data handling
+numpy>=1.24.0
+pillow>=10.0.0
+h5py>=3.9.0
+
+# Evaluation
+matplotlib>=3.7.0
+pandas>=2.0.0
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+scipy
+
+# Optional but recommended for speed
+flash-attn  # Flash attention for faster inference (CUDA only)

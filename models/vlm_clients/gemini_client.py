@@ -11,12 +11,12 @@ import google.generativeai as genai
 class GeminiVLMClient:
     """Client for Google Gemini models."""
 
-    def __init__(self, model: str = "gemini-1.5-pro"):
+    def __init__(self, model: str = "gemini-2.5-pro"):
         """
         Initialize Gemini client.
 
         Args:
-            model: Gemini model name
+            model: Gemini model name (e.g., 'gemini-2.5-pro', 'gemini-pro-latest')
         """
         self.model = model
         api_key = os.getenv("GEMINI_API_KEY")

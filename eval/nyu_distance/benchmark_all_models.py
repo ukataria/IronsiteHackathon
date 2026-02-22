@@ -23,6 +23,7 @@ from models.vlm_clients.anthropic_client import AnthropicVLMClient
 from models.vlm_clients.openai_client import OpenAIVLMClient
 from models.vlm_clients.gemini_client import GeminiVLMClient
 from models.vlm_clients.huggingface_client import HuggingFaceVLMClient
+from models.vlm_clients.twohead_client import TwoHeadVLMClient
 
 
 # Model configurations
@@ -49,10 +50,10 @@ MODELS = {
         "requires_api": True,
         "env_var": "ANTHROPIC_API_KEY"
     },
-    "gemini-1.5-pro": {
+    "gemini-2.5-pro": {
         "category": "closed",
         "client_class": GeminiVLMClient,
-        "model_name": "gemini-1.5-pro",
+        "model_name": "gemini-2.5-pro",
         "requires_api": True,
         "env_var": "GEMINI_API_KEY"
     },
@@ -116,6 +117,17 @@ MODELS = {
         "model_name": "phi-multimodal",
         "requires_api": False,
         "requires_gpu": False
+    },
+
+    # Two-Head Architecture (Ours)
+    "two-head-claude": {
+        "category": "two-head",
+        "client_class": TwoHeadVLMClient,
+        "model_name": "claude-sonnet-4-20250514",
+        "requires_api": True,
+        "requires_gpu": True,  # For Depth Anything V2 Large
+        "env_var": "ANTHROPIC_API_KEY",
+        "description": "Spatial Anchor Calibration + Claude Sonnet 4"
     }
 }
 
@@ -259,8 +271,8 @@ def plot_results(results_by_model, output_path):
 
     # 1. MAE comparison
     ax = axes[0, 0]
-    colors = {"closed": "blue", "open-research": "green", "edge": "orange"}
-    bar_colors = [colors[row["category"]] for _, row in df.iterrows()]
+    colors = {"closed": "blue", "open-research": "green", "edge": "orange", "two-head": "red"}
+    bar_colors = [colors.get(row["category"], "gray") for _, row in df.iterrows()]
 
     ax.barh(df["model"], df["mae"], color=bar_colors)
     ax.set_xlabel("MAE (meters)", fontsize=12)
@@ -273,7 +285,8 @@ def plot_results(results_by_model, output_path):
     legend_elements = [
         Patch(facecolor='blue', label='Closed Source'),
         Patch(facecolor='green', label='Open Research'),
-        Patch(facecolor='orange', label='Edge Deployable')
+        Patch(facecolor='orange', label='Edge Deployable'),
+        Patch(facecolor='red', label='Two-Head (Ours)')
     ]
     ax.legend(handles=legend_elements, loc='lower right')
 
@@ -372,9 +385,9 @@ def main():
     all_results = {}
 
     # Run evaluation for each model
-    for model_name in final_models:
+    for model_idx, model_name in enumerate(final_models, 1):
         print(f"\n{'='*60}")
-        print(f"EVALUATING: {model_name}")
+        print(f"EVALUATING: {model_name} ({model_idx}/{len(final_models)})")
         print(f"{'='*60}")
 
         model_config = MODELS[model_name]
@@ -388,12 +401,15 @@ def main():
                 client = client_class(model_name=model_config["model_name"], device=args.device)
         except Exception as e:
             print(f"✗ Failed to initialize {model_name}: {e}")
+            all_results[model_name] = []
             continue
 
         model_results = []
+        total_queries = args.num_images * args.pairs_per_image
+        successful_queries = 0
 
         # Run on test images
-        for img_idx in tqdm(range(args.num_images), desc=f"{model_name}"):
+        for img_idx in range(args.num_images):
             sample = loader.get_sample(img_idx)
             rgb_path = sample["rgb_path"]
             depth_map = sample["depth_map"]
@@ -414,6 +430,17 @@ def main():
 
                 # Query model
                 result = query_vlm_distance(client, str(marked_path), point1, point2)
+
+                if result["predicted_distance"] is not None:
+                    successful_queries += 1
+
+                # Print progress
+                current_query = img_idx * args.pairs_per_image + pair_idx + 1
+                print(f"  [{current_query}/{total_queries}] Image {img_idx}, Pair {pair_idx}: "
+                      f"GT={gt_distance:.2f}m, Pred={result['predicted_distance']:.2f}m"
+                      if result["predicted_distance"] is not None
+                      else f"  [{current_query}/{total_queries}] Image {img_idx}, Pair {pair_idx}: Failed")
+
                 result.update({
                     "image_idx": img_idx,
                     "pair_idx": pair_idx,
@@ -430,9 +457,11 @@ def main():
         if successful:
             errors = [abs(r["predicted_distance"] - r["gt_distance"]) for r in successful]
             mae = np.mean(errors)
-            print(f"✓ {model_name}: MAE = {mae:.3f}m ({len(successful)}/{len(model_results)} successful)")
+            median_error = np.median(errors)
+            print(f"\n✓ {model_name} COMPLETE:")
+            print(f"  MAE: {mae:.3f}m | Median: {median_error:.3f}m | Success: {len(successful)}/{len(model_results)}")
         else:
-            print(f"✗ {model_name}: No successful predictions")
+            print(f"\n✗ {model_name}: No successful predictions")
 
     # Save results
     results_path = out_dir / "benchmark_results.json"
