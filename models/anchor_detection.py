@@ -74,7 +74,7 @@ class AnchorDetector:
 
         self.model.to(device)
 
-    def detect(self, image_path: str, confidence_threshold: float = 0.25) -> List[Anchor]:
+    def detect(self, image_path: str, confidence_threshold: float = 0.01) -> List[Anchor]:
         """
         Detect anchor objects in an image.
 
@@ -87,7 +87,7 @@ class AnchorDetector:
         """
         # Run YOLO detection
         try:
-            results = self.model(image_path, conf=confidence_threshold, verbose=False)
+            results = self.model(image_path, conf=confidence_threshold, verbose=True)
         except Exception as e:
             print(f"  ⚠️  YOLO inference failed: {e}")
             return []
