@@ -251,11 +251,17 @@ def run_epoch(
     model: nn.Module,
     loader: DataLoader,
     optimizer: torch.optim.Optimizer | None,
+    scaler: torch.cuda.amp.GradScaler | None,
     device: torch.device,
     train: bool,
+    grad_accum_steps: int = 1,
 ) -> float:
     model.train(train)
     total_loss = 0.0
+    optimizer_steps = 0
+
+    if train and optimizer is not None:
+        optimizer.zero_grad()
 
     with torch.set_grad_enabled(train):
         for batch_idx, batch in enumerate(loader):
@@ -270,19 +276,34 @@ def run_epoch(
             ]
 
             try:
-                outputs = model(**inputs, labels=labels)
-                loss = outputs.loss
+                with torch.cuda.amp.autocast(enabled=(scaler is not None)):
+                    outputs = model(**inputs, labels=labels)
+                    loss = outputs.loss / grad_accum_steps
             except Exception as e:
                 print(f"  [batch {batch_idx}] forward error: {e}")
                 continue
 
             if train and optimizer is not None:
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
-                optimizer.step()
+                if scaler is not None:
+                    scaler.scale(loss).backward()
+                else:
+                    loss.backward()
 
-            total_loss += loss.item()
+                # Step only on accumulation boundary or final batch
+                is_last = (batch_idx + 1) == len(loader)
+                if (batch_idx + 1) % grad_accum_steps == 0 or is_last:
+                    if scaler is not None:
+                        scaler.unscale_(optimizer)
+                    nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1)
+                    if scaler is not None:
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        optimizer.step()
+                    optimizer.zero_grad()
+                    optimizer_steps += 1
+
+            total_loss += loss.item() * grad_accum_steps  # un-scale for logging
 
     return total_loss / max(len(loader), 1)
 
@@ -295,11 +316,15 @@ def run_epoch(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fine-tune GroundingDINO on Bricks + Outlet")
     parser.add_argument("--epochs", type=int, default=15, help="Number of training epochs")
-    parser.add_argument("--batch-size", type=int, default=2, help="Batch size per GPU step")
+    parser.add_argument("--batch-size", type=int, default=1, help="Batch size per GPU step")
+    parser.add_argument("--grad-accum", type=int, default=4,
+                        help="Gradient accumulation steps (effective batch = batch_size * grad_accum)")
     parser.add_argument("--lr", type=float, default=1e-5, help="Peak learning rate")
     parser.add_argument("--output-dir", type=str, default="data/gdino_finetuned")
     parser.add_argument("--freeze-backbone", action="store_true", default=True,
                         help="Freeze vision + text backbones (recommended for small dataset)")
+    parser.add_argument("--no-amp", action="store_true", default=False,
+                        help="Disable mixed precision (fp16 autocast)")
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -309,10 +334,16 @@ def main() -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
+    # Reduce CUDA memory fragmentation
+    import os
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    use_amp = device.type == "cuda" and not args.no_amp
+    print(f"Device: {device}  |  AMP (fp16): {use_amp}  |  grad_accum: {args.grad_accum}")
     if device.type == "cuda":
         print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -384,13 +415,21 @@ def main() -> None:
         weight_decay=1e-4,
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.lr / 10)
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+
+    print(
+        f"Effective batch size: {args.batch_size * args.grad_accum}  "
+        f"({args.batch_size} × {args.grad_accum} accum steps)"
+    )
 
     # ---- Training loop ----
     best_val_loss = float("inf")
 
     for epoch in range(1, args.epochs + 1):
-        train_loss = run_epoch(model, train_loader, optimizer, device, train=True)
-        val_loss = run_epoch(model, val_loader, None, device, train=False)
+        train_loss = run_epoch(model, train_loader, optimizer, scaler, device,
+                               train=True, grad_accum_steps=args.grad_accum)
+        val_loss = run_epoch(model, val_loader, None, None, device,
+                             train=False, grad_accum_steps=1)
         scheduler.step()
 
         print(
