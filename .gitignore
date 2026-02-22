@@ -45,5 +45,3 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
-*.v1i.coco/
-*.v1i.coco.balanced/
