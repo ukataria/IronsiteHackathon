@@ -395,7 +395,13 @@ def main():
 
         # Initialize client
         try:
-            if model_config.get("requires_api"):
+            # Two-head model has different initialization signature
+            if client_class == TwoHeadVLMClient:
+                client = client_class(
+                    vlm_model=model_config["model_name"],
+                    device=args.device
+                )
+            elif model_config.get("requires_api"):
                 client = client_class(model=model_config["model_name"])
             else:
                 client = client_class(model_name=model_config["model_name"], device=args.device)
