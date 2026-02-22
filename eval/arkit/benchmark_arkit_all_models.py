@@ -25,8 +25,6 @@ from models.vlm_clients.openai_client import OpenAIVLMClient
 from models.vlm_clients.gemini_client import GeminiVLMClient
 from models.vlm_clients.huggingface_client import HuggingFaceVLMClient
 from models.vlm_clients.twohead_client import TwoHeadVLMClient
-from models.vlm_clients.together_client import TogetherVLMClient
-from models.vlm_clients.replicate_client import ReplicateVLMClient
 
 
 # Model configurations
@@ -94,29 +92,6 @@ MODELS = {
         "model_name": "gemini-1.5-pro",
         "requires_api": True,
         "env_var": "GEMINI_API_KEY"
-    },
-
-    # API-hosted open models
-    "llama-3.2-90b-vision": {
-        "category": "api-hosted",
-        "client_class": TogetherVLMClient,
-        "model_name": "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
-        "requires_api": True,
-        "env_var": "TOGETHER_API_KEY"
-    },
-    "llama-3.2-11b-vision": {
-        "category": "api-hosted",
-        "client_class": TogetherVLMClient,
-        "model_name": "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
-        "requires_api": True,
-        "env_var": "TOGETHER_API_KEY"
-    },
-    "llama-3.2-90b-replicate": {
-        "category": "api-hosted",
-        "client_class": ReplicateVLMClient,
-        "model_name": "meta/meta-llama-3.2-90b-vision-instruct",
-        "requires_api": True,
-        "env_var": "REPLICATE_API_TOKEN"
     },
 
     # Open research models
@@ -333,7 +308,6 @@ def plot_results(results_by_model, output_path):
     ax = axes[0, 0]
     colors = {
         "closed": "#1f77b4",           # Blue
-        "api-hosted": "#ff7f0e",       # Orange
         "open-research": "#2ca02c",    # Green
         "edge": "#d62728",             # Red
         "two-head": "#9467bd"          # Purple
@@ -356,7 +330,6 @@ def plot_results(results_by_model, output_path):
     from matplotlib.patches import Patch
     legend_elements = [
         Patch(facecolor=colors["closed"], label='Closed Source (OpenAI/Anthropic/Google)'),
-        Patch(facecolor=colors["api-hosted"], label='API-Hosted Open (Llama 3.2)'),
         Patch(facecolor=colors["two-head"], label='Two-Head (Ours)')
     ]
     ax.legend(handles=legend_elements, loc='lower right', fontsize=9)
