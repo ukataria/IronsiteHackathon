@@ -1,145 +1,221 @@
-# DeepAnchored
+# DeepAnchor: Spatial Anchor Calibration for Vision-Language Construction Inspection
 
-**Does grounding a vision-language model's outputs in scene-derived spatial measurements improve its ability to reason accurately about physical dimensions in visual environments?**
-
-DeepAnchored answers this by using objects of known physical size already present in a scene as calibration anchors — converting pixel distances into real-world measurements and injecting them into a VLM prompt before inspection. No tape measures. No external sensors. No manual input.
+> **Bridging the gap between visual recognition and real-world spatial reasoning in construction inspection.**
 
 ---
 
-## The Problem
+## Overview
 
-Vision-language models can describe what they see but operate entirely in pixel-space. Given a photo, a model cannot tell you whether a gap is 14 inches or 20 inches — nothing in its input establishes a unit of measurement. This makes AI-driven visual inspection unreliable for any task where exact dimensions matter.
+Modern vision-language models (VLMs) like GPT-4o, Claude, and Gemini are remarkably capable at understanding scenes — but they consistently fail when asked to *measure* them. They can recognize that wall studs should be spaced 16 inches on center. They cannot tell you whether the studs in a photo actually are.
 
-## The Approach
+**DeepAnchor** solves this by turning ordinary construction site images into measurable, metrically-grounded environments — no LiDAR, no specialized hardware required. The system exploits a simple but powerful insight: construction sites are full of objects with known, standardized dimensions (bricks, CMU blocks, electrical boxes). By detecting these objects and using them as calibration anchors, DeepAnchor can estimate a pixel-to-meter scale factor and inject physically grounded measurements directly into a VLM's reasoning context.
 
-Certain objects have standardized physical dimensions that appear consistently across scenes. DeepAnchored detects these **spatial anchors** automatically, uses them to compute a pixel-to-inch conversion, and injects the resulting measurements as structured context into the VLM prompt.
-
-This is evaluated across three conditions:
-
-| Condition | VLM Input |
-|---|---|
-| **Baseline** | Raw image only |
-| **Depth-augmented** | Image + monocular depth map |
-| **Anchor-augmented** | Image + anchors with depth calculations | 
-| **DeepAnchored** | Image + calibrated real-world measurements |
+The result: automated spatial inspection capable of catching defects — wrong stud spacing, improper rebar placement, missing clearances — *before* they get buried behind drywall.
 
 ---
 
-## Pipeline
+## Why This Matters
 
-```
-Image / Video
-     │
-     ▼
-1. Frame Extraction       — sample frames, filter blurry
-     │
-     ▼
-2. Anchor Detection       — YOLOv8 (fine-tuned) + GroundingDINO fallback
-     │
-     ▼
-3. Depth Estimation       — Depth Anything V2
-     │
-     ▼
-4. Scale Calibration      — pixel-to-inch conversion from anchor bounding boxes
-     │
-     ▼
-5. Spatial Measurement    — distances between structural elements in inches
-     │
-     ▼
-6. VLM Inspection         — Claude / GPT-4o with injected measurements
-     │
-     ▼
-  Inspection Report (pass/fail per frame, violation details)
-```
+Construction rework costs the United States more than **$60 billion annually**. A spatial defect caught before enclosure costs hundreds of dollars to fix. The same defect discovered after drywall installation can cost **$50,000 or more** in demolition and rework.
+
+Current AI vision systems can describe a construction scene but cannot reliably answer the one question that matters most to an inspector: *is this measurement within tolerance?*
+
+DeepAnchor addresses this directly, enabling pass/fail inspection decisions grounded in physical units rather than visual guesswork.
 
 ---
 
-## Quickstart
+## Approach
 
-### Requirements
-- Python 3.11+
-- Node.js 18+
-- `uv` package manager
-- API key for Anthropic or OpenAI (set in `.env`)
+### Core Insight
 
-### Setup
+Construction environments contain **standardized manufactured components** with fixed, known dimensions. These objects serve as natural calibration references — the computational equivalent of a trained inspector mentally calibrating distance against the known 3.5-inch width of a 2×4.
 
-```bash
-# Clone and install Python deps
-git clone https://github.com/ukataria/IronsiteHackathon
-cd IronsiteHackathon
-uv sync
+### Calibration Anchors
 
-# Install frontend deps
-cd frontend && npm install && cd ..
+| Material     | Known Dimensions (inches)         |
+|--------------|-----------------------------------|
+| CMU Block    | 7.625 × 7.625 × 15.625           |
+| Electrical Box | 2 × 3                           |
+| Brick        | 3.625 × 2.25 × 7.625             |
 
-# Add API keys
-# Create a .env file with:
-# ANTHROPIC_API_KEY=-...
-# OPENAI_API_KEY=-...
+### Pipeline (5 Stages)
+
 ```
-
-### Run
-
-**Terminal 1 — Backend:**
-```bash
-uv run uvicorn api:app --host 0.0.0.0 --port 8000
-```
-
-**Terminal 2 — Frontend:**
-```bash
-cd frontend && npm run dev
-```
-
-Open [http://localhost:8080](http://localhost:8080).
-
-### CLI — Process a single image
-
-```bash
-uv run python pipeline.py data/frames/your_image.jpg
-```
-
-### CLI — Batch process
-
-```bash
-uv run python scripts/run_batch.py --vlm claude
+Raw Image
+    │
+    ▼
+1. Anchor Detection      → YOLOv8 detects known-dimension objects (bricks, CMU blocks, boxes)
+    │
+    ▼
+2. Depth Estimation      → Depth Anything V2 produces a dense relative depth map
+    │
+    ▼
+3. Scale Calibration     → Pixel-to-meter scale computed from anchor bounding boxes;
+                           median aggregation across multiple anchors for robustness
+    │
+    ▼
+4. Spatial Measurement   → Distances, heights, and clearances extracted in real-world units;
+                           depth-plane consistency enforced to prevent cross-plane errors
+    │
+    ▼
+5. Context Injection     → Structured measurement JSON injected into VLM prompt;
+                           model reasons over facts, not pixels
 ```
 
 ---
 
-## Project Structure
+## Technical Details
+
+### Anchor Detection
+
+A YOLO-family detector fine-tuned on annotated construction imagery identifies anchor objects in each frame. Each detection returns a bounding box, class label, and confidence score. Only detections above a configurable confidence threshold (τ ∈ [0.25, 0.50]) are retained.
+
+### Depth Estimation
+
+Depth Anything V2 produces a dense depth map used not for metric depth recovery (which is scale-ambiguous from monocular images), but for **plane separation** — determining whether objects share a surface or lie at different depths. This prevents a critical failure mode: applying a scale factor derived from an anchor on one plane to measure an object on a different plane.
+
+Per-object depth is estimated as the median depth within each bounding box:
 
 ```
-├── api.py                  # FastAPI backend
-├── pipeline.py             # End-to-end pipeline
-├── src/
-│   ├── anchors/detect.py   # YOLOv8 + GroundingDINO anchor detection
-│   ├── depth/estimate.py   # Depth Anything V2
-│   ├── calibration/        # Pixel-to-inch scale math
-│   ├── measurement/        # Spatial fact extraction
-│   ├── vlm/                # Claude / GPT-4o wrappers + prompts
-│   └── utils.py            # Shared helpers, caching
-├── frontend/               # React + TypeScript + Tailwind UI
-├── scripts/
-│   ├── extract_frames.py   # Pull frames from video
-│   └── run_batch.py        # Batch inference
-└── data/
-    ├── frames/             # Input images
-    ├── detections/         # Anchor detection outputs
-    ├── calibrations/       # Scale calibration results
-    ├── measurements/       # Spatial measurements per frame
-    └── results/            # VLM responses (all 3 conditions)
+z_k = median{ D(u,v) | (u,v) ∈ bounding_box_k }
+```
+
+### Scale Calibration
+
+For each detected anchor, an independent scale estimate is computed:
+
+```
+s_k = pixel_extent_k / real_world_dimension_k
+```
+
+Multiple anchors are aggregated using the **median** to reject outliers caused by occlusion, detection noise, or perspective distortion:
+
+```
+s_calibrated = median(s_1, s_2, ..., s_n)
+```
+
+### Depth Adjustment
+
+When an anchor and a measurement target lie on different depth planes, a perspective-based scale adjustment is applied:
+
+```
+s_adjusted = s_anchor × (depth_anchor / depth_target)
+```
+
+This compensates for the fact that farther objects appear smaller under perspective projection.
+
+### Spatial Measurement
+
+Once scale is calibrated, physical distance is recovered as:
+
+```
+d_meters = d_pixels / s_calibrated
+```
+
+All measurements — distances, heights, clearances — are packaged into a structured JSON object and injected into the VLM prompt alongside the original image. The model is instructed to reason over these quantitative facts rather than attempting visual estimation.
+
+---
+
+## Evaluation
+
+### Benchmark: ARKitScenes LiDAR
+
+We evaluate on the ARKitScenes dataset, which provides RGB frames paired with metrically-accurate LiDAR depth and camera intrinsics. Ground-truth distances are computed by back-projecting pixel coordinates into 3D space and measuring Euclidean distance. This benchmark isolates metric reasoning ability from image quality confounds.
+
+### Ablation Results
+
+| Condition                  | MAE (meters) | MAE (inches) |
+|----------------------------|:------------:|:------------:|
+| VLM Only                   | 1.27         | 50.0         |
+| VLM + Depth Cues           | 2.66         | 104.7        |
+| VLM + Anchors (no depth)   | 2.95         | 116.1        |
+| **Full DeepAnchor (Ours)** | **1.06**     | **41.7**     |
+
+### Comparison Against Closed-Source VLMs
+
+| System                     | MAE (meters) | MAE (inches) |
+|----------------------------|:------------:|:------------:|
+| **DeepAnchor (Ours)**      | **1.28**     | **50.4**     |
+| GPT-4o-mini                | 2.39         | 94.1         |
+| GPT-4o                     | 2.55         | 100.4        |
+| Claude Opus 4              | 2.77         | 109.1        |
+| Claude Sonnet 4            | 2.83         | 111.4        |
+
+DeepAnchor reduces MAE by **46–55% relative to all evaluated closed-source VLMs**.
+
+---
+
+## Key Findings
+
+**1. Explicit scale grounding is the critical ingredient.**
+VLMs already *know* construction standards. The failure is perceptual, not knowledge-based. Providing explicit metric measurements — rather than asking the model to infer them — is what unlocks reliable spatial reasoning.
+
+**2. Depth cues alone can make things worse.**
+Injecting relative depth without a calibrated scale causes models to over-trust an incorrect metric interpretation. Depth-only augmentation underperformed even the image-only baseline (2.66m vs. 1.27m MAE). Depth is useful for plane separation, not scale estimation.
+
+**3. Anchors without depth calibration are fragile.**
+Naive anchor-based scaling (without depth-plane consistency) performed worst overall (2.95m MAE) because anchors on different planes introduce incorrect scale factors. The full pipeline — anchors + depth-plane alignment — is what achieves the performance gain.
+
+**4. The approach generalizes beyond construction.**
+Any environment containing standardized manufactured components (hospitals, warehouses, manufacturing floors) can serve as a calibration field. No specialized hardware required.
+
+---
+
+## Applications
+
+- **Construction QA**: Automated pass/fail verification of stud spacing, rebar placement, electrical box heights, and system clearances before enclosure steps.
+- **Insurance & Claims**: Time-stamped, structured spatial evidence of site conditions for audit trails.
+- **Compliance Reporting**: Jurisdiction-specific rule encoding with numeric deficiency justification.
+- **Progress Monitoring**: Repeated captures compared against dimensional tolerances, reducing in-person walkthrough frequency.
+
+---
+
+## Limitations
+
+- Requires at least one clearly visible, detectable anchor in the frame. Performance degrades when anchors are absent, occluded, or only partially visible.
+- Assumes standardized components follow nominal dimensions — mixed sizes of similar-looking objects can introduce ambiguity.
+- Monocular depth remains scale-ambiguous and can be noisy; depth errors propagate to depth-adjusted scale estimates.
+- Performance is sensitive to detector quality under domain shift (challenging lighting, clutter, motion blur).
+- Does not currently handle rotated anchors without orientation-aware detection.
+
+---
+
+## Future Work
+
+- **Real-time video**: Optimize the pipeline for live construction video streams, enabling continuous monitoring.
+- **BIM integration**: Automatically compare as-built measurements against Building Information Model specifications.
+- **Additional trades**: Extend anchor library and detection models to HVAC, plumbing, and fire protection systems.
+- **Foundation model integration**: Incorporate Grounded-SAM for more robust anchor segmentation and orientation handling.
+
+---
+
+## Repository Structure
+
+```
+deepanchor/
+├── detection/          # YOLOv8 anchor detector (training + inference)
+├── depth/              # Depth Anything V2 integration
+├── calibration/        # Scale calibration and depth-plane logic
+├── measurement/        # Spatial measurement extraction
+├── injection/          # VLM context injection and prompt templates
+├── evaluation/         # ARKitScenes benchmark scripts
+├── data/               # Anchor dimension lookup tables
+└── README.md
 ```
 
 ---
 
-## Environment Variables
+## Citation
 
-```
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
+```bibtex
+@article{nakhawa2025deepanchor,
+  title={DeepAnchor: Spatial Anchor Calibration for Vision-Language Construction Inspection},
+  author={Nakhawa, Ankit and Mandal, Souptik and Kataria, Utsav and Kotha, Vishal and Singh, Eshan},
+  year={2025},
+  institution={University of Maryland}
+}
 ```
 
 ---
 
-## Built at IronSite Hackathon · 36 hours · 2026
+*DeepAnchor demonstrates that physically grounded AI perception is achievable today — using commodity images, standardized objects, and a principled calibration pipeline — without waiting for affordable metric depth sensors or next-generation VLMs.*
