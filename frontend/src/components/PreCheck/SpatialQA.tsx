@@ -6,10 +6,9 @@ import { sendChatMessage } from '@/api';
 interface Props {
   imageId: string | null;
   calibration: CalibrationData | null;
-  vlmResponse: string | null;
 }
 
-export function SpatialQA({ imageId, calibration, vlmResponse }: Props) {
+export function SpatialQA({ imageId, calibration }: Props) {
   const [exchanges, setExchanges] = useState<QAExchange[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,24 +47,14 @@ export function SpatialQA({ imageId, calibration, vlmResponse }: Props) {
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 pt-3 pb-2">
-        <span className="panel-header">Ask PreCheck</span>
+        <span className="panel-header">Ask DeepAnchor</span>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 space-y-3">
         {exchanges.length === 0 && (
-          <div className="flex flex-col items-center gap-2 mt-4">
-            <p className="text-muted-foreground text-[10px] text-center">
-              Ask about any measurement in this scene…
-            </p>
-            {vlmResponse && (
-              <button
-                onClick={() => setExchanges([{ question: '', answer: vlmResponse }])}
-                className="text-[10px] text-primary underline underline-offset-2 hover:text-primary/80"
-              >
-                Show full inspection report
-              </button>
-            )}
-          </div>
+          <p className="text-muted-foreground text-[10px] mt-4 text-center">
+            Ask about any measurement in this scene…
+          </p>
         )}
         {exchanges.map((ex, i) => (
           <div key={i} className="space-y-1.5">
@@ -76,7 +65,7 @@ export function SpatialQA({ imageId, calibration, vlmResponse }: Props) {
               </div>
             )}
             <div>
-              <span className="text-[10px] font-semibold tracking-wider text-primary">PRECHECK</span>
+              <span className="text-[10px] font-semibold tracking-wider text-primary">DEEPANCHOR</span>
               <div className="text-[11px] text-foreground mt-0.5 leading-snug
                 [&_h1]:text-xs [&_h1]:font-bold [&_h1]:mt-1.5 [&_h1]:mb-0.5
                 [&_h2]:text-[11px] [&_h2]:font-semibold [&_h2]:mt-1.5 [&_h2]:mb-0.5 [&_h2]:text-primary

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { generateDemoData } from '@/data/demoData';
-import { fetchFrameList, fetchRawFrameData, fetchVlmResponse } from '@/api';
+import { fetchFrameList, fetchRawFrameData } from '@/api';
 import { VideoPlayer } from '@/components/PreCheck/VideoPlayer';
 import { CalibrationPanel } from '@/components/PreCheck/CalibrationPanel';
 import { FindingsFeed } from '@/components/PreCheck/FindingsFeed';
@@ -62,13 +62,6 @@ const Index = () => {
   const totalFrames = frames.length;
   const frameData = frames[currentFrameIndex] ?? null;
 
-  // Fetch VLM anchor-calibrated report for current frame
-  const { data: vlmResponse = '' } = useQuery({
-    queryKey: ['vlm', frameData?.image_id],
-    queryFn: () => fetchVlmResponse(frameData!.image_id!),
-    enabled: !!frameData?.image_id,
-    staleTime: Infinity,
-  });
 
   // ---------------------------------------------------------------------------
   // Playback
@@ -193,7 +186,7 @@ const Index = () => {
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-sm font-bold tracking-wide text-primary">PRECHECK</h1>
+          <h1 className="text-sm font-bold tracking-wide text-primary">DEEPANCHOR</h1>
           <span className="text-[10px] text-muted-foreground font-mono">
             {useApi ? `v1.0 LIVE · ${frameIds.length} frames` : 'v1.0 DEMO'}
           </span>
@@ -253,7 +246,6 @@ const Index = () => {
               <SpatialQA
                 imageId={frameData?.image_id ?? null}
                 calibration={frameData?.calibration ?? null}
-                vlmResponse={vlmResponse || null}
               />
             </ResizablePanel>
           </ResizablePanelGroup>
