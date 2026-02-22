@@ -146,6 +146,14 @@ class AnchorDetector:
         else:
             print(f"  ⚠️  YOLO detected 0 objects (confidence threshold: {confidence_threshold})")
 
+        # IMPORTANT: Use only the single best anchor for more consistent calibration
+        # Multiple anchors with different dimensions can introduce calibration errors
+        if len(anchors) > 1:
+            # Pick the anchor with highest confidence * bbox area (most reliable)
+            best_anchor = max(anchors, key=lambda a: a.confidence * a.pixel_width)
+            print(f"  → Using single best anchor: {best_anchor.class_name} (conf={best_anchor.confidence:.2f})")
+            return [best_anchor]
+
         return anchors
 
     def _map_to_anchor_type(self, yolo_class: str, width: float, height: float) -> str:
@@ -190,9 +198,9 @@ class AnchorDetector:
             return "microwave_width"
 
         if "tv" in class_lower or "monitor" in class_lower:
-            # Common TV/monitor width - updated for better calibration
-            # 50-55" TVs are now most common (diagonal), width ~48-50"
-            ANCHOR_DIMENSIONS["tv_width"] = 50.0  # inches (typical modern TV)
+            # Common TV/monitor width (diagonal to width conversion)
+            # 43-50" diagonal TVs are ~37-43" wide
+            ANCHOR_DIMENSIONS["tv_width"] = 40.0  # inches (typical TV width)
             return "tv_width"
 
         if "chair" in class_lower:
@@ -264,13 +272,13 @@ class AnchorDetector:
         aspect_ratio = height / width if width > 0 else 0
 
         if "person" in class_lower:
-            # Use for scale - average adult height ~66-69 inches
-            # Shoulder width varies 16-20" depending on gender/build
-            if aspect_ratio > 1.5:  # Standing person
-                ANCHOR_DIMENSIONS["person_height"] = 68.0  # inches (avg adult ~5'8")
+            # Use for scale - average adult measurements
+            # Standing: full height, Sitting/partial: shoulder width
+            if aspect_ratio > 1.5:  # Standing person (tall bbox)
+                ANCHOR_DIMENSIONS["person_height"] = 66.0  # inches (avg adult ~5'6")
                 return "person_height"
-            else:  # Sitting or partial - use width instead
-                ANCHOR_DIMENSIONS["person_width"] = 20.0  # inches (shoulder width)
+            else:  # Sitting or partial (wide bbox) - use width
+                ANCHOR_DIMENSIONS["person_width"] = 18.0  # inches (shoulder width)
                 return "person_width"
 
         if "clock" in class_lower:
