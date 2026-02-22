@@ -189,6 +189,17 @@ class AnchorDetector:
             ANCHOR_DIMENSIONS["microwave_width"] = 20.0
             return "microwave_width"
 
+        if "tv" in class_lower or "monitor" in class_lower:
+            # Use width as the known dimension
+            # Common TV sizes: 32", 43", 55", 65"
+            # Use aspect ratio to estimate - assume 16:9
+            # For simplicity, estimate based on detection size
+            if width > height:  # Landscape orientation
+                # Estimate TV size based on pixel width
+                # This is approximate for testing
+                ANCHOR_DIMENSIONS["tv_width"] = 43.0  # inches (assume ~43" TV)
+                return "tv_width"
+
         # Fall back to aspect ratio heuristics for generic objects
         aspect_ratio = height / width if width > 0 else 0
 
