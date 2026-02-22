@@ -298,5 +298,90 @@ def chat(image_id: str):
     return jsonify({"response": response})
 
 
+REPORT_CACHE = Path("data/results/project_report_claude.json")
+
+
+@app.route("/api/report")
+def get_project_report():
+    """Return (or generate) the whole-video construction inspection report."""
+    if REPORT_CACHE.exists():
+        data = json.loads(REPORT_CACHE.read_text())
+        return jsonify(data)
+    return jsonify({"response": "", "status": "not_generated"})
+
+
+@app.route("/api/report/generate", methods=["POST"])
+def generate_project_report():
+    """Aggregate all frames and call Claude for a project-level report."""
+    from src.vlm.aggregate import (
+        aggregate_all_frames,
+        pick_representative_frames,
+        format_aggregate_block,
+    )
+    from src.vlm.clients import call_claude
+
+    agg = aggregate_all_frames(DATA_DIRS["measurements"])
+    if agg.get("total_frames", 0) == 0:
+        return jsonify({"error": "No processed frames found"}), 400
+
+    agg_block = format_aggregate_block(agg)
+    rep_ids = pick_representative_frames(DATA_DIRS["measurements"], n=3)
+
+    # Pick images: worst, mid, best
+    image_paths: list[str] = []
+    for rid in rep_ids:
+        for ext in (".jpg", ".jpeg", ".png"):
+            p = DATA_DIRS["frames"] / f"{rid}{ext}"
+            if p.exists():
+                image_paths.append(str(p))
+                break
+
+    prompt = f"""You are a construction site foreman reviewing an automated inspection of a full work session.
+
+A computer vision system analyzed {agg['total_frames']} video frames and extracted the measurements below.
+Write the report for a tradesperson on-site — plain language, no jargon, no mention of "frames", "detections", or "camera". Just tell them what was found and what to fix.
+
+━━━ MEASURED DATA ━━━
+{agg_block}
+
+━━━ CODE STANDARDS ━━━
+  Brick horizontal spacing: 8.0" center-to-center (±0.25")
+  Brick course height: 2.625" center-to-center (±0.25")
+  Stud spacing: 16.0" OC (±0.5") per IRC R602
+  Rebar spacing: 12.0" OC (±0.75")
+  CMU spacing: 16.0" OC (±0.5")
+  Electrical box height: 12.0" from floor (±1.0") per NEC
+
+Write a short site inspection summary:
+## What Was Checked
+One sentence per element type found.
+
+## What Needs Fixing
+Bullet each issue. Be specific: what's wrong, by how much, what the standard is.
+
+## Overall Verdict
+One line: PASS / FAIL / NEEDS REVIEW — and why in plain English.
+
+Max 250 words. No emoji. No mention of sample sizes, detection counts, or technical pipeline details."""
+
+    try:
+        # call_claude supports one image; for multi-image we pass primary + secondary
+        primary = image_paths[0] if image_paths else None
+        secondary = image_paths[1] if len(image_paths) > 1 else None
+        response = call_claude(
+            prompt,
+            image_path=primary,
+            secondary_image_path=secondary,
+            cache_key=f"project_report:{hash(agg_block)}",
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    result = {"response": response, "aggregated": agg, "representative_frames": rep_ids}
+    REPORT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    REPORT_CACHE.write_text(json.dumps(result, indent=2))
+    return jsonify(result)
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001)

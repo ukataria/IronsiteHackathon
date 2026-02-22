@@ -17,7 +17,7 @@ export function AlertManager({ alerts, onDismiss, onJumpToFrame }: Props) {
           alert={alert}
           onDismiss={() => onDismiss(alert.id)}
           onJump={() => {
-            onJumpToFrame(alert.frame_id - 1);
+            onJumpToFrame(alert.frame_id);
             onDismiss(alert.id);
           }}
         />
@@ -30,8 +30,8 @@ function AlertToast({ alert, onDismiss, onJump }: { alert: AlertData; onDismiss:
   const [fading, setFading] = useState(false);
 
   useEffect(() => {
-    const fadeTimer = setTimeout(() => setFading(true), 7500);
-    const removeTimer = setTimeout(onDismiss, 8000);
+    const fadeTimer = setTimeout(() => setFading(true), 2700);
+    const removeTimer = setTimeout(onDismiss, 3000);
     return () => {
       clearTimeout(fadeTimer);
       clearTimeout(removeTimer);

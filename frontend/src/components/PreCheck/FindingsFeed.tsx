@@ -40,7 +40,7 @@ export function FindingsFeed({ findings, isPlaying, onSeekToFrame }: Props) {
             <div
               key={f.id + f.frame_id}
               className={cardClass}
-              onClick={() => onSeekToFrame(f.frame_id - 1)}
+              onClick={() => onSeekToFrame(f.frame_id)}
             >
               <div className="flex items-start gap-1.5">
                 <span className={`font-bold ${
@@ -61,7 +61,7 @@ export function FindingsFeed({ findings, isPlaying, onSeekToFrame }: Props) {
                     </div>
                   )}
                   <div className="text-muted-foreground text-[10px] mt-0.5">
-                    Frame {String(f.frame_id).padStart(3, '0')}
+                    Frame {String(f.frame_id + 1).padStart(3, '0')}
                   </div>
                 </div>
               </div>

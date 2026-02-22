@@ -7,6 +7,7 @@ import { CalibrationPanel } from '@/components/PreCheck/CalibrationPanel';
 import { FindingsFeed } from '@/components/PreCheck/FindingsFeed';
 import { SpatialQA } from '@/components/PreCheck/SpatialQA';
 import { AlertManager } from '@/components/PreCheck/AlertManager';
+import { ProjectReport } from '@/components/PreCheck/ProjectReport';
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -23,6 +24,7 @@ const Index = () => {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [measureMode, setMeasureMode] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [confidenceHistory, setConfidenceHistory] = useState<number[]>([]);
   const seenRef = useRef(new Set<string>());
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
@@ -196,9 +198,19 @@ const Index = () => {
             {useApi ? `v1.0 LIVE · ${frameIds.length} frames` : 'v1.0 DEMO'}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
-          <span className={useApi ? 'status-dot-live' : 'status-dot-idle'} />
-          <span>{useApi ? 'PIPELINE DATA' : 'DEMO MODE'}</span>
+        <div className="flex items-center gap-3">
+          {useApi && (
+            <button
+              onClick={() => setShowReport(true)}
+              className="text-[10px] font-mono text-muted-foreground hover:text-primary border border-border hover:border-primary px-2 py-1 rounded"
+            >
+              Project Report
+            </button>
+          )}
+          <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+            <span className={useApi ? 'status-dot-live' : 'status-dot-idle'} />
+            <span>{useApi ? 'PIPELINE DATA' : 'DEMO MODE'}</span>
+          </div>
         </div>
       </header>
 
@@ -247,6 +259,8 @@ const Index = () => {
           </ResizablePanelGroup>
         </aside>
       </div>
+
+      {showReport && <ProjectReport onClose={() => setShowReport(false)} />}
 
       <AlertManager
         alerts={alerts}
