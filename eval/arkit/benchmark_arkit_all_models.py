@@ -155,9 +155,9 @@ MODELS = {
         "requires_gpu": False
     },
 
-    # Two-Head Architecture (Ours)
-    "two-head-claude": {
-        "category": "two-head",
+    # Spatial Anchor Model (Ours)
+    "spatial-anchor": {
+        "category": "spatial-anchor",
         "client_class": TwoHeadVLMClient,
         "model_name": "claude-sonnet-4-20250514",
         "requires_api": True,
@@ -310,7 +310,7 @@ def plot_results(results_by_model, output_path):
         "closed": "#1f77b4",           # Blue
         "open-research": "#2ca02c",    # Green
         "edge": "#d62728",             # Red
-        "two-head": "#9467bd"          # Purple
+        "spatial-anchor": "#9467bd"    # Purple
     }
     bar_colors = [colors.get(row["category"], "gray") for _, row in df.iterrows()]
 
@@ -330,7 +330,7 @@ def plot_results(results_by_model, output_path):
     from matplotlib.patches import Patch
     legend_elements = [
         Patch(facecolor=colors["closed"], label='Closed Source (OpenAI/Anthropic/Google)'),
-        Patch(facecolor=colors["two-head"], label='Two-Head (Ours)')
+        Patch(facecolor=colors["spatial-anchor"], label='Spatial Anchor Model (Ours)')
     ]
     ax.legend(handles=legend_elements, loc='lower right', fontsize=9)
 

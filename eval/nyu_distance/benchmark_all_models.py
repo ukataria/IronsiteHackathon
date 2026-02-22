@@ -119,9 +119,9 @@ MODELS = {
         "requires_gpu": False
     },
 
-    # Two-Head Architecture (Ours)
-    "two-head-claude": {
-        "category": "two-head",
+    # Spatial Anchor Model (Ours)
+    "spatial-anchor": {
+        "category": "spatial-anchor",
         "client_class": TwoHeadVLMClient,
         "model_name": "claude-sonnet-4-20250514",
         "requires_api": True,
@@ -271,7 +271,7 @@ def plot_results(results_by_model, output_path):
 
     # 1. MAE comparison
     ax = axes[0, 0]
-    colors = {"closed": "blue", "open-research": "green", "edge": "orange", "two-head": "red"}
+    colors = {"closed": "blue", "open-research": "green", "edge": "orange", "spatial-anchor": "red"}
     bar_colors = [colors.get(row["category"], "gray") for _, row in df.iterrows()]
 
     ax.barh(df["model"], df["mae"], color=bar_colors)
