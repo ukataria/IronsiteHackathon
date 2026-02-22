@@ -1,0 +1,4 @@
+frame_id,rgb_path,depth_gt_path
+# Example entries - replace with your actual data paths:
+# frame_001,data/raw/ARKitScenes/scene_001/rgb/0001.jpg,data/raw/ARKitScenes/scene_001/depth/0001.npy
+# frame_002,data/raw/ARKitScenes/scene_001/rgb/0002.jpg,data/raw/ARKitScenes/scene_001/depth/0002.npy

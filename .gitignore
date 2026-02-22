@@ -22,6 +22,9 @@ data/measurements/
 data/results/
 data/cache/
 
+# Evaluation outputs
+outputs/
+
 # Large binary files
 *.npy
 *.pth

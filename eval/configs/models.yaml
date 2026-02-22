@@ -1,0 +1,40 @@
+# VLM model configurations for depth evaluation
+
+vlm_models:
+  openai:
+    - name: gpt-4o
+      enabled: true
+      temperature: 0.0
+      max_tokens: 50
+
+    - name: gpt-4-turbo
+      enabled: false
+      temperature: 0.0
+      max_tokens: 50
+
+  anthropic:
+    - name: claude-3-5-sonnet-20241022
+      enabled: true
+      temperature: 0.0
+      max_tokens: 50
+
+    - name: claude-3-opus-20240229
+      enabled: false
+      temperature: 0.0
+      max_tokens: 50
+
+# Evaluation settings
+eval_settings:
+  # Number of random pixel points to sample per image
+  points_per_image: 16
+
+  # Sampling strategy: "uniform" or "stratified"
+  sampling_strategy: "stratified"
+
+  # Depth range filter (meters) - only sample points within this range
+  depth_range:
+    min: 0.1
+    max: 10.0
+
+  # Whether to include camera intrinsics in the prompt
+  include_intrinsics: false
