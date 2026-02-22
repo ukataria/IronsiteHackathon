@@ -45,3 +45,4 @@ packages = ["src"]
 
 [tool.uv.extra-build-dependencies]
 precheck = ["hatchling"]
+groundingdino = ["torch", "torchvision"]
