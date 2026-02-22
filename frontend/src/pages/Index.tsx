@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { generateDemoData } from '@/data/demoData';
+import { fetchFrameList, fetchRawFrameData, fetchVlmResponse } from '@/api';
 import { VideoPlayer } from '@/components/PreCheck/VideoPlayer';
 import { CalibrationPanel } from '@/components/PreCheck/CalibrationPanel';
 import { FindingsFeed } from '@/components/PreCheck/FindingsFeed';
@@ -10,8 +12,9 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable';
-import type { Finding, AlertData } from '@/components/PreCheck/types';
+import type { FrameData, Finding, AlertData } from '@/components/PreCheck/types';
 
+// Fallback when API has no processed frames yet
 const demoData = generateDemoData();
 
 const Index = () => {
@@ -24,18 +27,56 @@ const Index = () => {
   const seenRef = useRef(new Set<string>());
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
-  const frameData = demoData.frames[currentFrameIndex] ?? null;
-  const totalFrames = demoData.total_frames;
+  // ---------------------------------------------------------------------------
+  // API data fetching
+  // ---------------------------------------------------------------------------
 
+  const { data: frameIds = [] } = useQuery({
+    queryKey: ['frames'],
+    queryFn: fetchFrameList,
+    retry: 1,
+    staleTime: 30_000,
+  });
+
+  const useApi = frameIds.length > 0;
+
+  const { data: apiFrames = [] } = useQuery<FrameData[]>({
+    queryKey: ['allFrames', frameIds],
+    queryFn: async () => {
+      const results = await Promise.all(
+        frameIds.map(async (id, idx) => {
+          const raw = await fetchRawFrameData(id);
+          return { ...raw, frame_id: idx } as FrameData;
+        })
+      );
+      return results;
+    },
+    enabled: useApi,
+    staleTime: 30_000,
+  });
+
+  // Use API frames when available, fall back to demo data
+  const frames: FrameData[] = useApi && apiFrames.length > 0 ? apiFrames : demoData.frames;
+  const totalFrames = frames.length;
+  const frameData = frames[currentFrameIndex] ?? null;
+
+  // Fetch VLM anchor-calibrated report for current frame
+  const { data: vlmResponse = '' } = useQuery({
+    queryKey: ['vlm', frameData?.image_id],
+    queryFn: () => fetchVlmResponse(frameData!.image_id!),
+    enabled: !!frameData?.image_id,
+    staleTime: Infinity,
+  });
+
+  // ---------------------------------------------------------------------------
   // Playback
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     if (isPlaying) {
       intervalRef.current = setInterval(() => {
         setCurrentFrameIndex(prev => {
-          if (prev >= totalFrames - 1) {
-            setIsPlaying(false);
-            return prev;
-          }
+          if (prev >= totalFrames - 1) { setIsPlaying(false); return prev; }
           return prev + 1;
         });
       }, 1000);
@@ -43,7 +84,18 @@ const Index = () => {
     return () => clearInterval(intervalRef.current);
   }, [isPlaying, totalFrames]);
 
+  // Reset state when switching data source
+  useEffect(() => {
+    seenRef.current.clear();
+    setFindings([]);
+    setAlerts([]);
+    setCurrentFrameIndex(0);
+  }, [useApi]);
+
+  // ---------------------------------------------------------------------------
   // Process findings on frame change
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     if (!frameData) return;
 
@@ -84,7 +136,9 @@ const Index = () => {
           type: m.type === 'box_height' ? 'info' : 'compliant',
           label: m.label,
           value: `${m.inches}"`,
-          detail: m.type === 'box_height' ? `${m.inches}" from floor · within tolerance` : 'compliant',
+          detail: m.type === 'box_height'
+            ? `${m.inches}" from floor · within tolerance`
+            : 'compliant',
           frame_id: frameData.frame_id,
         });
       }
@@ -93,14 +147,16 @@ const Index = () => {
     if (newFindings.length) setFindings(prev => [...newFindings, ...prev]);
     if (newAlerts.length) setAlerts(prev => [...prev, ...newAlerts]);
 
-    // Confidence history
     setConfidenceHistory(prev => {
       const next = [...prev, frameData.calibration.confidence];
       return next.length > 10 ? next.slice(-10) : next;
     });
   }, [currentFrameIndex, frameData]);
 
+  // ---------------------------------------------------------------------------
   // Keyboard shortcuts
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -124,31 +180,29 @@ const Index = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [isPlaying, totalFrames]);
 
-  const handleSeek = useCallback((frame: number) => {
-    setCurrentFrameIndex(frame);
-  }, []);
+  const handleSeek = useCallback((frame: number) => setCurrentFrameIndex(frame), []);
+  const dismissAlert = useCallback((id: string) => setAlerts(prev => prev.filter(a => a.id !== id)), []);
 
-  const dismissAlert = useCallback((id: string) => {
-    setAlerts(prev => prev.filter(a => a.id !== id));
-  }, []);
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-      {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-bold tracking-wide text-primary">PRECHECK</h1>
-          <span className="text-[10px] text-muted-foreground font-mono">v1.0 DEMO</span>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {useApi ? `v1.0 LIVE · ${frameIds.length} frames` : 'v1.0 DEMO'}
+          </span>
         </div>
         <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
-          <span className="status-dot-live" />
-          <span>INSPECTION ACTIVE</span>
+          <span className={useApi ? 'status-dot-live' : 'status-dot-idle'} />
+          <span>{useApi ? 'PIPELINE DATA' : 'DEMO MODE'}</span>
         </div>
       </header>
 
-      {/* Main content */}
       <div className="flex flex-1 min-h-0 max-w-[1400px] w-full mx-auto">
-        {/* Left sidebar */}
         <aside className="w-[260px] shrink-0 border-r border-border bg-card">
           <CalibrationPanel
             calibration={frameData?.calibration ?? null}
@@ -159,7 +213,6 @@ const Index = () => {
           />
         </aside>
 
-        {/* Center - Video */}
         <main className="flex-1 flex flex-col min-w-0">
           <VideoPlayer
             frameData={frameData}
@@ -168,13 +221,12 @@ const Index = () => {
             isPlaying={isPlaying}
             onTogglePlay={() => setIsPlaying(p => !p)}
             onSeek={handleSeek}
-            frames={demoData.frames}
+            frames={frames}
             measureMode={measureMode}
             onToggleMeasure={() => setMeasureMode(p => !p)}
           />
         </main>
 
-        {/* Right panel */}
         <aside className="w-[320px] shrink-0 border-l border-border bg-card">
           <ResizablePanelGroup direction="vertical">
             <ResizablePanel defaultSize={60} minSize={30}>
@@ -186,20 +238,19 @@ const Index = () => {
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={40} minSize={20}>
-              <SpatialQA calibration={frameData?.calibration ?? null} />
+              <SpatialQA
+                calibration={frameData?.calibration ?? null}
+                vlmResponse={vlmResponse || null}
+              />
             </ResizablePanel>
           </ResizablePanelGroup>
         </aside>
       </div>
 
-      {/* Alerts */}
       <AlertManager
         alerts={alerts}
         onDismiss={dismissAlert}
-        onJumpToFrame={(fi) => {
-          setCurrentFrameIndex(fi);
-          setIsPlaying(false);
-        }}
+        onJumpToFrame={(fi) => { setCurrentFrameIndex(fi); setIsPlaying(false); }}
       />
     </div>
   );

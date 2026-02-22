@@ -35,12 +35,22 @@ const QA_PATTERNS = [
 
 interface Props {
   calibration: CalibrationData | null;
+  vlmResponse: string | null;
 }
 
-export function SpatialQA({ calibration }: Props) {
+export function SpatialQA({ calibration, vlmResponse }: Props) {
   const [exchanges, setExchanges] = useState<QAExchange[]>([]);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Seed with real VLM inspection report when available
+  useEffect(() => {
+    if (vlmResponse) {
+      setExchanges([{ question: '', answer: vlmResponse }]);
+    } else {
+      setExchanges([]);
+    }
+  }, [vlmResponse]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -76,10 +86,12 @@ export function SpatialQA({ calibration }: Props) {
         )}
         {exchanges.map((ex, i) => (
           <div key={i} className="space-y-1.5">
-            <div>
-              <span className="text-[10px] font-semibold tracking-wider text-muted-foreground">YOU</span>
-              <p className="text-xs text-foreground mt-0.5">{ex.question}</p>
-            </div>
+            {ex.question && (
+              <div>
+                <span className="text-[10px] font-semibold tracking-wider text-muted-foreground">YOU</span>
+                <p className="text-xs text-foreground mt-0.5">{ex.question}</p>
+              </div>
+            )}
             <div>
               <span className="text-[10px] font-semibold tracking-wider text-primary">PRECHECK</span>
               <pre className="text-xs text-foreground mt-0.5 whitespace-pre-wrap font-mono leading-relaxed">

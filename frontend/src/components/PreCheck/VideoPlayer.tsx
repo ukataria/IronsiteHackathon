@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import type { FrameData, AnchorData } from './types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '@/data/demoData';
+import { getFrameImageUrl } from '@/api';
 import { Play, Pause, Ruler } from 'lucide-react';
 
 const ANCHOR_COLORS: Record<string, string> = {
@@ -8,6 +9,7 @@ const ANCHOR_COLORS: Record<string, string> = {
   cmu: '#06B6D4',
   rebar: '#A855F7',
   elec_box: '#EAB308',
+  brick: '#10B981',
 };
 
 const ANCHOR_KNOWN: Record<string, string> = {
@@ -15,6 +17,7 @@ const ANCHOR_KNOWN: Record<string, string> = {
   cmu: 'CMU block — 8″ nominal',
   rebar: '#4 rebar — 0.5″ dia',
   elec_box: 'Single-gang box — 2″ × 3″',
+  brick: 'Brick — 7.625″ length',
 };
 
 interface Props {
@@ -42,6 +45,25 @@ export function VideoPlayer({
   const prevFrameRef = useRef(-1);
   const animFrameRef = useRef(0);
 
+  // Real image loading
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [imgReady, setImgReady] = useState(false);
+
+  useEffect(() => {
+    if (!frameData?.image_id) {
+      imgRef.current = null;
+      setImgReady(false);
+      return;
+    }
+    setImgReady(false);
+    const img = new Image();
+    img.onload = () => {
+      imgRef.current = img;
+      setImgReady(true);
+    };
+    img.src = getFrameImageUrl(frameData.image_id);
+  }, [frameData?.image_id]);
+
   const toCanvasCoords = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -55,85 +77,88 @@ export function VideoPlayer({
   const drawScene = useCallback((ctx: CanvasRenderingContext2D) => {
     const W = CANVAS_WIDTH, H = CANVAS_HEIGHT;
 
-    // Wall background
-    ctx.fillStyle = '#3A3530';
-    ctx.fillRect(0, 0, W, H);
+    if (imgReady && imgRef.current) {
+      // Real pipeline image
+      ctx.drawImage(imgRef.current, 0, 0, W, H);
+    } else {
+      // Synthetic fallback for demo data
+      ctx.fillStyle = '#3A3530';
+      ctx.fillRect(0, 0, W, H);
 
-    // Subtle grain texture
-    ctx.globalAlpha = 0.04;
-    for (let i = 0; i < 800; i++) {
-      const gx = Math.random() * W;
-      const gy = Math.random() * H;
-      ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#000';
-      ctx.fillRect(gx, gy, 1, 1);
-    }
-    ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.04;
+      for (let i = 0; i < 800; i++) {
+        const gx = Math.random() * W;
+        const gy = Math.random() * H;
+        ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#000';
+        ctx.fillRect(gx, gy, 1, 1);
+      }
+      ctx.globalAlpha = 1;
 
-    // Floor
-    ctx.fillStyle = '#252018';
-    ctx.fillRect(0, 510, W, 30);
+      ctx.fillStyle = '#252018';
+      ctx.fillRect(0, 510, W, 30);
+      ctx.fillStyle = '#5C4A3A';
+      ctx.fillRect(0, 498, W, 14);
+      ctx.fillStyle = '#5C4A3A';
+      ctx.fillRect(0, 12, W, 14);
 
-    // Bottom plate
-    ctx.fillStyle = '#5C4A3A';
-    ctx.fillRect(0, 498, W, 14);
-
-    // Top plate
-    ctx.fillStyle = '#5C4A3A';
-    ctx.fillRect(0, 12, W, 14);
-
-    // Studs from frame data
-    if (frameData) {
-      for (const anchor of frameData.anchors) {
-        const [x1, y1, x2, y2] = anchor.box;
-        if (anchor.type === 'stud') {
-          ctx.fillStyle = '#6B5344';
-          ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
-          // Grain lines
-          ctx.strokeStyle = '#5A4434';
-          ctx.lineWidth = 0.5;
-          for (let y = y1 + 8; y < y2; y += 12 + Math.random() * 6) {
+      if (frameData) {
+        for (const anchor of frameData.anchors) {
+          const [x1, y1, x2, y2] = anchor.box;
+          if (anchor.type === 'stud') {
+            ctx.fillStyle = '#6B5344';
+            ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+            ctx.strokeStyle = '#5A4434';
+            ctx.lineWidth = 0.5;
+            for (let y = y1 + 8; y < y2; y += 12 + Math.random() * 6) {
+              ctx.beginPath();
+              ctx.moveTo(x1 + 2, y);
+              ctx.lineTo(x2 - 2, y + 4 + Math.random() * 4);
+              ctx.stroke();
+            }
+          } else if (anchor.type === 'elec_box') {
+            ctx.fillStyle = '#4A5568';
+            ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+            ctx.strokeStyle = '#2D3748';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+            ctx.fillStyle = '#3A4558';
+            const cx = (x1 + x2) / 2;
             ctx.beginPath();
-            ctx.moveTo(x1 + 2, y);
-            ctx.lineTo(x2 - 2, y + 4 + Math.random() * 4);
-            ctx.stroke();
+            ctx.arc(cx, y1 + 8, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(cx, y2 - 8, 4, 0, Math.PI * 2);
+            ctx.fill();
           }
-        } else if (anchor.type === 'elec_box') {
-          ctx.fillStyle = '#4A5568';
-          ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
-          ctx.strokeStyle = '#2D3748';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-          // Knockout holes
-          ctx.fillStyle = '#3A4558';
-          const cx = (x1 + x2) / 2;
-          ctx.beginPath();
-          ctx.arc(cx, y1 + 8, 4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(cx, y2 - 8, 4, 0, Math.PI * 2);
-          ctx.fill();
         }
       }
     }
 
     // Camera watermark
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.font = '10px "Space Mono", monospace';
     ctx.fillText('CAM-01  SITE INSPECTION', 12, H - 8);
     if (frameData) {
       const ts = `FRM ${String(frameData.frame_id).padStart(3, '0')}`;
       ctx.fillText(ts, W - 90, H - 8);
     }
-  }, [frameData]);
+  }, [frameData, imgReady]);
 
   const drawOverlay = useCallback((ctx: CanvasRenderingContext2D) => {
     if (!frameData) return;
     const progress = lineProgressRef.current;
     const now = Date.now();
 
+    // Scale pipeline coords (image space) → canvas space
+    const scaleX = CANVAS_WIDTH / (frameData.image_width ?? CANVAS_WIDTH);
+    const scaleY = CANVAS_HEIGHT / (frameData.image_height ?? CANVAS_HEIGHT);
+
     // Bounding boxes
     for (const anchor of frameData.anchors) {
-      const [x1, y1, x2, y2] = anchor.box;
+      const x1 = anchor.box[0] * scaleX;
+      const y1 = anchor.box[1] * scaleY;
+      const x2 = anchor.box[2] * scaleX;
+      const y2 = anchor.box[3] * scaleY;
       const color = ANCHOR_COLORS[anchor.type] || '#F97316';
 
       ctx.strokeStyle = color;
@@ -141,7 +166,6 @@ export function VideoPlayer({
       ctx.setLineDash([]);
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-      // Label chip
       const labelText = anchor.label;
       ctx.font = 'bold 9px "Space Mono", monospace';
       const tw = ctx.measureText(labelText).width;
@@ -161,10 +185,14 @@ export function VideoPlayer({
 
     // Measurement lines
     for (const m of frameData.measurements) {
-      const midX = (m.cx_a + m.cx_b) / 2;
-      const midY = (m.cy_a + m.cy_b) / 2;
-      const dx = m.cx_b - m.cx_a;
-      const dy = m.cy_b - m.cy_a;
+      const cxa = m.cx_a * scaleX;
+      const cya = m.cy_a * scaleY;
+      const cxb = m.cx_b * scaleX;
+      const cyb = m.cy_b * scaleY;
+      const midX = (cxa + cxb) / 2;
+      const midY = (cya + cyb) / 2;
+      const dx = cxb - cxa;
+      const dy = cyb - cya;
 
       const sx = midX - (dx / 2) * progress;
       const sy = midY - (dy / 2) * progress;
@@ -182,18 +210,16 @@ export function VideoPlayer({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Endpoint markers
       if (progress > 0.5) {
         ctx.fillStyle = lineColor;
         ctx.beginPath();
-        ctx.arc(m.cx_a, m.cy_a, 3, 0, Math.PI * 2);
+        ctx.arc(cxa, cya, 3, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(m.cx_b, m.cy_b, 3, 0, Math.PI * 2);
+        ctx.arc(cxb, cyb, 3, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Distance label
       if (progress > 0.7) {
         const label = m.compliant ? `${m.inches}\"` : `${m.inches}" ✗`;
         ctx.font = 'bold 11px "Space Mono", monospace';
@@ -218,10 +244,10 @@ export function VideoPlayer({
       const fromAnchor = frameData.anchors.find(a => a.id === v.from_anchor);
       const toAnchor = frameData.anchors.find(a => a.id === v.to_anchor);
       if (fromAnchor && toAnchor) {
-        const rx1 = Math.min(fromAnchor.box[0], toAnchor.box[0]) - 6;
-        const ry1 = Math.min(fromAnchor.box[1], toAnchor.box[1]) - 6;
-        const rx2 = Math.max(fromAnchor.box[2], toAnchor.box[2]) + 6;
-        const ry2 = Math.max(fromAnchor.box[3], toAnchor.box[3]) + 6;
+        const rx1 = Math.min(fromAnchor.box[0], toAnchor.box[0]) * scaleX - 6;
+        const ry1 = Math.min(fromAnchor.box[1], toAnchor.box[1]) * scaleY - 6;
+        const rx2 = Math.max(fromAnchor.box[2], toAnchor.box[2]) * scaleX + 6;
+        const ry2 = Math.max(fromAnchor.box[3], toAnchor.box[3]) * scaleY + 6;
 
         ctx.strokeStyle = `rgba(251, 113, 133, ${pulseAlpha})`;
         ctx.lineWidth = 2;
@@ -249,9 +275,12 @@ export function VideoPlayer({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-        const inches = dist / frameData.calibration.pixels_per_inch;
-        const label = `${dist.toFixed(0)}px ÷ ${frameData.calibration.pixels_per_inch.toFixed(2)} px/in = ${inches.toFixed(1)}"`;
+        // Convert canvas pixels → image pixels for accurate inch measurement
+        const dx_img = (p2.x - p1.x) / scaleX;
+        const dy_img = (p2.y - p1.y) / scaleY;
+        const dist_img = Math.sqrt(dx_img ** 2 + dy_img ** 2);
+        const inches = dist_img / frameData.calibration.pixels_per_inch;
+        const label = `${dist_img.toFixed(0)}px ÷ ${frameData.calibration.pixels_per_inch.toFixed(2)} px/in = ${inches.toFixed(1)}"`;
         const mx = (p1.x + p2.x) / 2;
         const my = (p1.y + p2.y) / 2 - 16;
 
@@ -274,7 +303,6 @@ export function VideoPlayer({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Reset line progress on frame change
     if (prevFrameRef.current !== currentFrame) {
       lineProgressRef.current = 0;
       prevFrameRef.current = currentFrame;
@@ -293,7 +321,6 @@ export function VideoPlayer({
       drawScene(ctx);
       drawOverlay(ctx);
 
-      // Keep animating if violations exist (for pulse) or line still drawing
       const hasViolations = frameData?.measurements.some(m => !m.compliant);
       if (lineProgressRef.current < 1 || hasViolations) {
         animFrameRef.current = requestAnimationFrame(render);
@@ -309,8 +336,13 @@ export function VideoPlayer({
     const { x, y } = toCanvasCoords(e.clientX, e.clientY);
     setTooltipPos({ x: e.clientX, y: e.clientY });
 
+    // Scale anchor boxes from image space to canvas space for hit detection
+    const scaleX = CANVAS_WIDTH / (frameData.image_width ?? CANVAS_WIDTH);
+    const scaleY = CANVAS_HEIGHT / (frameData.image_height ?? CANVAS_HEIGHT);
+
     const found = frameData.anchors.find(a => {
-      const [x1, y1, x2, y2] = a.box;
+      const x1 = a.box[0] * scaleX, y1 = a.box[1] * scaleY;
+      const x2 = a.box[2] * scaleX, y2 = a.box[3] * scaleY;
       return x >= x1 && x <= x2 && y >= y1 && y <= y2;
     });
     setHoveredAnchor(found || null);
@@ -354,7 +386,6 @@ export function VideoPlayer({
           onClick={handleCanvasClick}
         />
 
-        {/* Hover tooltip */}
         {hoveredAnchor && !measureMode && (
           <div
             className="fixed z-50 px-2 py-1 rounded text-[10px] font-mono bg-card border border-border text-foreground pointer-events-none"
@@ -387,7 +418,6 @@ export function VideoPlayer({
         {/* Scrubber */}
         <div className="flex-1 relative h-3 cursor-pointer group" onClick={handleScrubberClick}>
           <div className="absolute inset-y-1 inset-x-0 bg-secondary rounded-full" />
-          {/* Colored ticks */}
           {frames.map((f, i) => {
             const hasViolation = f.measurements.some(m => !m.compliant);
             return (

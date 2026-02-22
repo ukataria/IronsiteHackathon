@@ -1,6 +1,6 @@
 export interface AnchorData {
   id: number;
-  type: 'stud' | 'cmu' | 'rebar' | 'elec_box';
+  type: 'stud' | 'cmu' | 'rebar' | 'elec_box' | 'brick';
   box: [number, number, number, number];
   confidence: number;
   label: string;
@@ -32,6 +32,11 @@ export interface CalibrationData {
 
 export interface FrameData {
   frame_id: number;
+  /** Image ID from the pipeline — present when loaded from API, absent in demo mode. */
+  image_id?: string;
+  /** Original image dimensions for coordinate scaling in VideoPlayer. */
+  image_width?: number;
+  image_height?: number;
   calibration: CalibrationData;
   anchors: AnchorData[];
   measurements: MeasurementData[];
