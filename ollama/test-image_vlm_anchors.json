@@ -1,0 +1,61 @@
+{
+  "image_id": "test-image",
+  "image_width": 867,
+  "image_height": 1390,
+  "vlm": "ollama",
+  "n_anchors": 3,
+  "anchors": [
+    {
+      "id": 0,
+      "type": "stud",
+      "box_pixels": [
+        507,
+        610,
+        813,
+        662
+      ],
+      "confidence": 0.95,
+      "notes": "wooden studs",
+      "pixel_width": 306,
+      "pixel_height": 52,
+      "center_x": 660.0,
+      "center_y": 636.0,
+      "real_width_inches": 3.5
+    },
+    {
+      "id": 1,
+      "type": "brick",
+      "box_pixels": [
+        116,
+        647,
+        361,
+        825
+      ],
+      "confidence": 0.9,
+      "notes": "pile of bricks in front of frame",
+      "pixel_width": 245,
+      "pixel_height": 178,
+      "center_x": 238.5,
+      "center_y": 736.0,
+      "real_width_inches": 7.625
+    },
+    {
+      "id": 2,
+      "type": "electrical_box",
+      "box_pixels": [
+        445,
+        648,
+        530,
+        790
+      ],
+      "confidence": 0.85,
+      "notes": "single-gang outlet box on right wall",
+      "pixel_width": 85,
+      "pixel_height": 142,
+      "center_x": 487.5,
+      "center_y": 719.0,
+      "real_width_inches": 2.0
+    }
+  ],
+  "raw_response": " ```json\n{\n  \"detections\": [\n    {\n      \"type\": \"stud\",\n      \"box_pixels\": [507, 610, 813, 662],\n      \"confidence\": 0.95,\n      \"notes\": \"wooden studs\"\n    },\n    {\n      \"type\": \"brick\",\n      \"box_pixels\": [116, 647, 361, 825],\n      \"confidence\": 0.9,\n      \"notes\": \"pile of bricks in front of frame\"\n    },\n    {\n      \"type\": \"electrical_box\",\n      \"box_pixels\": [445, 648, 530, 790],\n      \"confidence\": 0.85,\n      \"notes\": \"single-gang outlet box on right wall\"\n    }\n  ]\n}\n``` "
+}

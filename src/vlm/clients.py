@@ -123,6 +123,60 @@ def call_gpt4o(
 
 
 # ---------------------------------------------------------------------------
+# Ollama (local, no API key)
+# ---------------------------------------------------------------------------
+
+
+def call_ollama(
+    prompt: str,
+    image_path: str | None = None,
+    system: str = INSPECTION_SYSTEM_PROMPT,
+    cache_key: str = "",
+    model: str = "llava",
+) -> str:
+    """Call a local Ollama model via its OpenAI-compatible API. Returns response text."""
+    import openai
+
+    image_b64 = image_to_base64(image_path) if image_path else None
+
+    def _call() -> str:
+        client = openai.OpenAI(
+            api_key="ollama",
+            base_url="http://localhost:11434/v1",
+        )
+
+        user_content: list = []
+        if image_path:
+            suffix = Path(image_path).suffix.lower()
+            media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{media_type};base64,{image_b64}"},
+            })
+        user_content.append({"type": "text", "text": prompt})
+
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=2048,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_content},
+            ],
+        )
+        return response.choices[0].message.content or ""
+
+    try:
+        return cached_api_call(
+            prompt=f"ollama:{model}:{cache_key}:{prompt}",
+            call_fn=_call,
+            image_b64=image_b64,
+        )
+    except Exception as e:
+        logger.error(f"Ollama call failed [{cache_key}]: {e}")
+        return f"ERROR: Ollama call failed — {e}"
+
+
+# ---------------------------------------------------------------------------
 # Unified inspection runner
 # ---------------------------------------------------------------------------
 

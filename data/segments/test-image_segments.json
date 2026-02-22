@@ -1,0 +1,126 @@
+{
+  "image_id": "test-image",
+  "n_segments": 5,
+  "segments": [
+    {
+      "id": 0,
+      "type": "electrical_box",
+      "label_raw": "electrical box outlet box",
+      "box_pixels": [
+        539.0818481445312,
+        812.4751586914062,
+        699.321044921875,
+        1077.318603515625
+      ],
+      "confidence": 0.48773494362831116,
+      "pixel_width": 160.23919677734375,
+      "pixel_height": 264.84344482421875,
+      "center_x": 619.2014465332031,
+      "center_y": 944.8968811035156,
+      "real_width_inches": 2.0,
+      "mask_bbox": [
+        546,
+        817,
+        695,
+        1073
+      ],
+      "mask_area_px": 34959
+    },
+    {
+      "id": 1,
+      "type": "stud",
+      "label_raw": "vertical wood board",
+      "box_pixels": [
+        665.8763427734375,
+        12.629474639892578,
+        847.794677734375,
+        1301.38525390625
+      ],
+      "confidence": 0.448927104473114,
+      "pixel_width": 181.9183349609375,
+      "pixel_height": 1288.7557792663574,
+      "center_x": 756.8355102539062,
+      "center_y": 657.0073642730713,
+      "real_width_inches": 3.5,
+      "mask_bbox": [
+        665,
+        0,
+        866,
+        1298
+      ],
+      "mask_area_px": 229469
+    },
+    {
+      "id": 2,
+      "type": "stud",
+      "label_raw": "vertical wood board",
+      "box_pixels": [
+        50.9873046875,
+        3.8168790340423584,
+        253.73291015625,
+        1296.91748046875
+      ],
+      "confidence": 0.4783111810684204,
+      "pixel_width": 202.74560546875,
+      "pixel_height": 1293.1006014347076,
+      "center_x": 152.360107421875,
+      "center_y": 650.3671797513962,
+      "real_width_inches": 3.5,
+      "mask_bbox": [
+        47,
+        0,
+        251,
+        1297
+      ],
+      "mask_area_px": 209471
+    },
+    {
+      "id": 3,
+      "type": "electrical_box",
+      "label_raw": "electrical box box",
+      "box_pixels": [
+        561.5308227539062,
+        862.8428344726562,
+        672.572265625,
+        1035.119384765625
+      ],
+      "confidence": 0.2539043426513672,
+      "pixel_width": 111.04144287109375,
+      "pixel_height": 172.27655029296875,
+      "center_x": 617.0515441894531,
+      "center_y": 948.9811096191406,
+      "real_width_inches": 2.0,
+      "mask_bbox": [
+        564,
+        862,
+        677,
+        1036
+      ],
+      "mask_area_px": 17322
+    },
+    {
+      "id": 4,
+      "type": "rebar",
+      "label_raw": "steel bar",
+      "box_pixels": [
+        792.259521484375,
+        14.409310340881348,
+        863.3319702148438,
+        1310.37744140625
+      ],
+      "confidence": 0.30263105034828186,
+      "pixel_width": 71.07244873046875,
+      "pixel_height": 1295.9681310653687,
+      "center_x": 827.7957458496094,
+      "center_y": 662.3933758735657,
+      "real_width_inches": 0.5,
+      "mask_bbox": [
+        792,
+        0,
+        866,
+        1299
+      ],
+      "mask_area_px": 72481
+    }
+  ]
+}

@@ -24,10 +24,11 @@ data/cache/
 
 # Large binary files
 *.npy
-*.pt
 *.pth
 *.onnx
 *.bin
+*.pt
+*.zip
 
 # Model weights cache
 .cache/

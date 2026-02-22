@@ -74,7 +74,10 @@ def merge_datasets(yaml_paths, output_dir, max_per_split: int | None = None, max
     Returns the path to the merged data.yaml.
     """
     output_dir = Path(output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+        print(f"  Cleared existing merge dir: {output_dir}")
+    output_dir.mkdir(parents=True)
 
     # ── Step 1: Build unified class list ──
     unified_names = []  # ordered list of unique class names
