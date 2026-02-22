@@ -162,8 +162,9 @@ class VLMPlusAnchorsCondition(AblationCondition):
     def query_distance(self, image_path, point1, point2, prompt, **kwargs):
         """Augment prompt with detected anchor information."""
         # Detect anchors on original image (not the marked version)
+        # Use very low confidence threshold to maximize detection
         original_image = kwargs.get('original_image_path', image_path)
-        anchors = self.anchor_detector.detect(original_image, confidence_threshold=0.01)
+        anchors = self.anchor_detector.detect(original_image, confidence_threshold=0.001)
 
         if not anchors:
             # No anchors - same as VLM only
@@ -239,8 +240,9 @@ class FullSpatialAnchorCondition(AblationCondition):
         from models.spatial_calibration import SpatialCalibrator
 
         # Detect anchors on original image (not the marked version)
+        # Use very low confidence threshold to maximize detection
         original_image = kwargs.get('original_image_path', image_path)
-        anchors = self.anchor_detector.detect(original_image, confidence_threshold=0.01)
+        anchors = self.anchor_detector.detect(original_image, confidence_threshold=0.001)
 
         # Get depth map from original image
         depth_map = self.depth_estimator.estimate_depth(original_image)
