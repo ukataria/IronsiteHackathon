@@ -14,19 +14,13 @@ Vision-language models can describe what they see but operate entirely in pixel-
 
 Certain objects have standardized physical dimensions that appear consistently across scenes. DeepAnchored detects these **spatial anchors** automatically, uses them to compute a pixel-to-inch conversion, and injects the resulting measurements as structured context into the VLM prompt.
 
-| Anchor Object | Known Dimension |
-|---|---|
-| 2×4 stud (face) | 3.5 inches |
-| CMU block | 15.625 inches |
-| #4 Rebar | 0.5 inches |
-| Electrical box | 4.0 inches |
-
 This is evaluated across three conditions:
 
 | Condition | VLM Input |
 |---|---|
 | **Baseline** | Raw image only |
 | **Depth-augmented** | Image + monocular depth map |
+| **Anchor-augmented** | Image + anchors with depth calculations | 
 | **DeepAnchored** | Image + calibrated real-world measurements |
 
 ---
@@ -81,8 +75,8 @@ cd frontend && npm install && cd ..
 
 # Add API keys
 # Create a .env file with:
-# ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=-...
+# OPENAI_API_KEY=-...
 ```
 
 ### Run
