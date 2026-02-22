@@ -24,6 +24,37 @@ and know exactly what to fix and where."""
 # Construction standards reference
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Standard element dimensions — injected as grounding context for the VLM
+# ---------------------------------------------------------------------------
+
+ELEMENT_DIMENSIONS_BLOCK = """\
+━━━ STANDARD ELEMENT DIMENSIONS (used for scale calibration) ━━━
+
+Brick (Standard Modular, ASTM C216):
+  Length:  7.625 in  │  Nominal with 3/8" mortar joint: 8.0 in
+  Height:  2.25  in  │  Nominal course height:          2.625 in
+  Width:   3.625 in
+  3 courses + joints = 8.0 in nominal vertical
+
+CMU / Concrete Block (Standard 8×8×16, ASTM C90):
+  Length:  15.625 in │  Nominal with 3/8" mortar joint: 16.0 in
+  Height:   7.625 in │  Nominal course height:           8.0 in
+  Width:    7.625 in
+  1 course + joint  = 8.0 in nominal vertical
+
+Electrical Outlet Box (Single-gang, NEC Article 314):
+  Width:   2.0 in (device box inner)
+  Height:  3.0 in (device box inner)
+  Depth:   2.5 in (standard)
+  Required centerline height from finished floor: 12.0 in (NEC, ±1 in)
+
+Mortar Joints:  3/8 in nominal  (tolerance: ±1/8 in)"""
+
+# ---------------------------------------------------------------------------
+# Construction standards reference
+# ---------------------------------------------------------------------------
+
 CONSTRUCTION_STANDARDS: dict[str, str] = {
     "stud_spacing": "16 inches on center (tolerance: ±0.5 inches) per IRC R602",
     "stud_spacing_24oc": "24 inches on center (tolerance: ±0.5 inches) for 2x6 walls",
@@ -32,6 +63,11 @@ CONSTRUCTION_STANDARDS: dict[str, str] = {
     "nail_plates": "Required on ALL stud penetrations within 1.5 inches of face per IRC R602.8",
     "header_bearing": "Minimum 1.5 inches bearing on each side per IRC R602.7",
     "cmu_joint_thickness": "3/8 inch mortar joints (tolerance: ±1/8 inch)",
+    "brick_dimensions": "Standard brick 7.625\" L × 3.625\" W × 2.25\" H; mortar joint 3/8\" nominal",
+    "brick_h_spacing": "Horizontal center-to-center: 8.0\" (brick + mortar joint, tolerance: ±0.25\")",
+    "brick_course_height": "Vertical course height: 2.625\" center-to-center (tolerance: ±0.25\")",
+    "cmu_dimensions": "Standard CMU 15.625\" L × 7.625\" H; mortar joint 3/8\" nominal",
+    "cmu_spacing": "Horizontal center-to-center: 16.0\" (CMU + mortar, tolerance: ±0.5\")",
 }
 
 STANDARDS_BLOCK = "\n".join(
@@ -82,14 +118,20 @@ Note: You have relative depth information but no calibrated real-world measureme
 # Condition 3 — Anchor-calibrated (full PreCheck pipeline output)
 # ---------------------------------------------------------------------------
 
-ANCHOR_CALIBRATED_PROMPT_TEMPLATE = """Inspect this construction image. Calibrated spatial \
-measurements have been computed from this image using known-dimension reference objects \
-(spatial anchor calibration).
+ANCHOR_CALIBRATED_PROMPT_TEMPLATE = """You are inspecting a construction site. \
+Two images have been provided:
+  Image 1: Original construction photo
+  Image 2: Depth map (jet colormap — red/warm = closer to camera, blue/cool = farther away)
+
+Use the depth map to understand spatial layout and which surfaces share the same plane. \
+Use the calibrated measurements below to answer questions in real-world inches.
 
 Question: {question}
 
+{dimensions_block}
+
 ━━━ CALIBRATED SPATIAL MEASUREMENTS ━━━
-Calibration Method: Spatial anchor calibration using known-dimension construction materials
+Calibration method: known physical dimensions of detected objects (bricks, CMU, outlet boxes)
 {calibration_summary}
 
 {measurements_block}
@@ -97,15 +139,34 @@ Calibration Method: Spatial anchor calibration using known-dimension constructio
 ━━━ APPLICABLE CONSTRUCTION STANDARDS ━━━
 {standards_block}
 
-IMPORTANT: Base your pass/fail determinations ONLY on the provided measurements above. \
-Do not visually re-estimate distances. The measurements were computed from calibrated \
-pixel-to-inch scale factors derived from known-dimension anchor objects in the scene.
+When answering questions about distances or sizes: use the provided scale \
+(pixels per inch) combined with the depth map to reason spatially. \
+For pass/fail, use ONLY the measured values above — do not visually re-estimate distances.
 
-Provide a structured inspection report including:
-1. Per-element pass/fail with exact measurements from the data above
-2. Specific deficiencies with precise locations
+Provide a structured inspection report:
+1. Per-element pass/fail with exact measurements
+2. Specific deficiencies with locations
 3. Severity ratings (critical / major / minor)
 4. Overall pass/fail recommendation"""
+
+
+def build_chat_opening_prompt(
+    measurements: dict,
+    question: str = "Provide a full inspection report.",
+) -> str:
+    """
+    Build the first-turn prompt for a chat session.
+    Includes dimensions, calibrated measurements, and standards as grounding context.
+    """
+    mblock = format_measurements_block(measurements)
+    cal_summary = build_calibration_summary(measurements)
+    return ANCHOR_CALIBRATED_PROMPT_TEMPLATE.format(
+        question=question,
+        dimensions_block=ELEMENT_DIMENSIONS_BLOCK,
+        calibration_summary=cal_summary,
+        measurements_block=mblock,
+        standards_block=STANDARDS_BLOCK,
+    )
 
 
 def format_measurements_block(measurements: dict) -> str:
@@ -117,25 +178,41 @@ def format_measurements_block(measurements: dict) -> str:
     lines.append(f"Scale: {ppi:.2f} pixels/inch  |  Calibration confidence: {conf:.0%}")
     lines.append("")
 
-    stud_spacings = measurements.get("stud_spacings", [])
-    if stud_spacings:
-        lines.append("Stud Spacing (center-to-center):")
-        for i, s in enumerate(stud_spacings):
+    def _spacing_block(label: str, spacings: list[dict]) -> None:
+        if not spacings:
+            return
+        lines.append(f"{label}:")
+        for i, s in enumerate(spacings):
             status = "✓ PASS" if s.get("compliant") else "✗ FAIL"
-            lines.append(f"  Bay {i+1}: {s['inches']:.1f}\"  [{status}]")
+            lines.append(f"  Bay {i+1}: {s['inches']:.2f}\"  [{status}]")
+
+    stud_spacings = measurements.get("stud_spacings", [])
+    _spacing_block("Stud Spacing (center-to-center, target 16.0\" OC)", stud_spacings)
 
     rebar_spacings = measurements.get("rebar_spacings", [])
     if rebar_spacings:
         lines.append("")
-        lines.append("Rebar Spacing (center-to-center):")
-        for i, s in enumerate(rebar_spacings):
-            status = "✓ PASS" if s.get("compliant") else "✗ FAIL"
-            lines.append(f"  Bay {i+1}: {s['inches']:.1f}\"  [{status}]")
+    _spacing_block("Rebar Spacing (center-to-center, target 12.0\" OC)", rebar_spacings)
+
+    brick_h = measurements.get("brick_h_spacings", [])
+    if brick_h:
+        lines.append("")
+    _spacing_block("Brick Horizontal Spacing (center-to-center, target 8.0\")", brick_h)
+
+    brick_v = measurements.get("brick_v_spacings", [])
+    if brick_v:
+        lines.append("")
+    _spacing_block("Brick Course Height (center-to-center, target 2.625\")", brick_v)
+
+    cmu_spacings = measurements.get("cmu_spacings", [])
+    if cmu_spacings:
+        lines.append("")
+    _spacing_block("CMU Block Spacing (center-to-center, target 16.0\")", cmu_spacings)
 
     elec_heights = measurements.get("electrical_box_heights", [])
     if elec_heights:
         lines.append("")
-        lines.append("Electrical Box Heights (from floor reference):")
+        lines.append("Electrical Box Heights (from floor reference, target 12.0\"):")
         for h in elec_heights:
             status = "✓ PASS" if h.get("compliant") else "✗ FAIL"
             lines.append(f"  Box {h['box_id']+1}: {h['height_inches']:.1f}\" to center  [{status}]")
