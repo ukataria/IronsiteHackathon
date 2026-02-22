@@ -1,0 +1,23 @@
+# Core dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+pillow>=10.0.0
+opencv-python>=4.8.0
+
+# VLM API clients
+openai>=1.0.0
+anthropic>=0.18.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.65.0
+pyyaml>=6.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Optional: Depth baseline models (uncomment if needed)
+# torch>=2.0.0
+# torchvision>=0.15.0
+# timm>=0.9.0

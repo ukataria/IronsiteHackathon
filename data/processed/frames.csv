@@ -1,0 +1,11 @@
+frame_id,rgb_path,depth_gt_path
+scene000_frame0000,data/raw/synthetic/scene_000/rgb/0000.jpg,data/raw/synthetic/scene_000/depth/0000.npy
+scene000_frame0001,data/raw/synthetic/scene_000/rgb/0001.jpg,data/raw/synthetic/scene_000/depth/0001.npy
+scene000_frame0002,data/raw/synthetic/scene_000/rgb/0002.jpg,data/raw/synthetic/scene_000/depth/0002.npy
+scene000_frame0003,data/raw/synthetic/scene_000/rgb/0003.jpg,data/raw/synthetic/scene_000/depth/0003.npy
+scene000_frame0004,data/raw/synthetic/scene_000/rgb/0004.jpg,data/raw/synthetic/scene_000/depth/0004.npy
+scene001_frame0000,data/raw/synthetic/scene_001/rgb/0000.jpg,data/raw/synthetic/scene_001/depth/0000.npy
+scene001_frame0001,data/raw/synthetic/scene_001/rgb/0001.jpg,data/raw/synthetic/scene_001/depth/0001.npy
+scene001_frame0002,data/raw/synthetic/scene_001/rgb/0002.jpg,data/raw/synthetic/scene_001/depth/0002.npy
+scene001_frame0003,data/raw/synthetic/scene_001/rgb/0003.jpg,data/raw/synthetic/scene_001/depth/0003.npy
+scene001_frame0004,data/raw/synthetic/scene_001/rgb/0004.jpg,data/raw/synthetic/scene_001/depth/0004.npy
