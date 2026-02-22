@@ -136,12 +136,24 @@ class TwoHeadVLMClient:
             else:
                 # Fallback: no calibration available, query VLM directly
                 print("⚠️  No calibration available - falling back to VLM estimation")
-                vlm_result = self.vlm.query_distance(image_path, point1, point2, prompt)
-                vlm_result["calibrated"] = False
-                vlm_result["model"] = f"two-head-{self.vlm_model}-uncalibrated"
-                return vlm_result
+                try:
+                    vlm_result = self.vlm.query_distance(image_path, point1, point2, prompt)
+                    vlm_result["calibrated"] = False
+                    vlm_result["model"] = f"two-head-{self.vlm_model}-uncalibrated"
+                    return vlm_result
+                except Exception as vlm_error:
+                    print(f"⚠️  VLM fallback failed: {vlm_error}")
+                    return {
+                        "predicted_distance": None,
+                        "raw_response": f"VLM fallback error: {str(vlm_error)}",
+                        "model": f"two-head-{self.vlm_model}-uncalibrated",
+                        "calibrated": False
+                    }
 
         except Exception as e:
+            import traceback
+            print(f"⚠️  Two-head error: {e}")
+            traceback.print_exc()
             return {
                 "predicted_distance": None,
                 "raw_response": f"Error: {str(e)}",
