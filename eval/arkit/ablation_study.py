@@ -363,6 +363,17 @@ def extract_distance_from_response(response_text):
     """Extract numerical distance from VLM response."""
     import re
 
+    # Clean the response
+    text = response_text.strip().lower()
+
+    # Look for just a number (most common format from Claude with max_tokens=10)
+    simple_number = re.search(r'^(\d+\.?\d*)$', text)
+    if simple_number:
+        try:
+            return float(simple_number.group(1))
+        except:
+            pass
+
     # Look for patterns like "X.XX meters" or "X.XX m"
     patterns = [
         r'(\d+\.?\d*)\s*meters?',
@@ -370,13 +381,17 @@ def extract_distance_from_response(response_text):
         r'approximately\s+(\d+\.?\d*)',
         r'around\s+(\d+\.?\d*)',
         r'about\s+(\d+\.?\d*)',
+        r'(\d+\.?\d*)',  # Any number as fallback
     ]
 
     for pattern in patterns:
-        match = re.search(pattern, response_text.lower())
+        match = re.search(pattern, text)
         if match:
             try:
-                return float(match.group(1))
+                value = float(match.group(1))
+                # Sanity check - indoor distances should be 0.1 to 20 meters
+                if 0.1 <= value <= 20:
+                    return value
             except:
                 continue
 
@@ -469,6 +484,7 @@ Please provide your answer as a single numerical value in meters."""
                     print(f"  Predicted: {predicted_distance:.2f}m | Error: {error:.2f}m")
                 else:
                     print(f"  Predicted: FAILED - Could not parse response")
+                    print(f"  Raw response: '{result['response']}'")
 
                 # Store result
                 all_results[cond_name].append({
