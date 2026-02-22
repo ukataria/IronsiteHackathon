@@ -43,23 +43,37 @@ def main() -> None:
     from pipeline import run_pipeline
 
     success, skipped, failed = 0, 0, 0
+    last_ppi: float = 0.0  # carry forward last valid scale
 
     for img_path in tqdm(sorted(image_paths), desc="Processing images"):
         image_id = img_path.stem
 
         if not args.force and already_processed(image_id):
+            # Keep last_ppi in sync even for skipped frames
+            cal_path = Path("data/calibrations") / f"{image_id}_calibration.json"
+            if cal_path.exists():
+                import json
+                ppi = json.loads(cal_path.read_text()).get("primary_pixels_per_inch", 0.0)
+                if ppi > 0:
+                    last_ppi = ppi
             tqdm.write(f"  SKIP {image_id} (already processed)")
             skipped += 1
             continue
 
         try:
-            run_pipeline(
+            result = run_pipeline(
                 str(img_path),
                 vlm=args.vlm,
                 device=args.device,
                 model_size=args.model_size,
                 skip_vlm=args.skip_vlm,
+                fallback_ppi=last_ppi,
             )
+            # Update carry-forward scale if this frame produced a good one
+            cal = result.get("stages", {}).get("calibration", {})
+            ppi = cal.get("pixels_per_inch", 0.0)
+            if ppi > 0:
+                last_ppi = ppi
             success += 1
         except Exception as e:
             tqdm.write(f"  FAIL {image_id}: {e}")

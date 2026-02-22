@@ -239,6 +239,7 @@ const Index = () => {
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={40} minSize={20}>
               <SpatialQA
+                imageId={frameData?.image_id ?? null}
                 calibration={frameData?.calibration ?? null}
                 vlmResponse={vlmResponse || null}
               />

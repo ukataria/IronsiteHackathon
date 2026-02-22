@@ -26,6 +26,7 @@ def run_pipeline(
     question: str = "What deficiencies exist in this construction work? Provide a full inspection report.",
     model_size: str = "small",
     skip_vlm: bool = False,
+    fallback_ppi: float = 0.0,
 ) -> dict:
     """
     Full pipeline for a single image.
@@ -98,7 +99,7 @@ def run_pipeline(
         try:
             from src.calibration.calibrate import calibrate_image
 
-            cal = calibrate_image(anchors_json, depth_npy_path, DATA_DIRS["calibrations"])
+            cal = calibrate_image(anchors_json, depth_npy_path, DATA_DIRS["calibrations"], fallback_ppi=fallback_ppi)
             results["stages"]["calibration"] = {
                 "status": "ok",
                 "pixels_per_inch": cal["primary_pixels_per_inch"],

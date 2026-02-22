@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from flask import Flask, jsonify, send_file, abort
+from flask import Flask, jsonify, send_file, abort, request
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -215,6 +215,87 @@ def get_vlm(image_id: str, condition: str):
             data = json.loads(p.read_text())
             return jsonify({"response": data.get("response", ""), "vlm": vlm})
     return jsonify({"response": "", "vlm": "none"})
+
+
+@app.route("/api/chat/<image_id>", methods=["POST"])
+def chat(image_id: str):
+    body = request.get_json(force=True)
+    question = body.get("question", "").strip()
+    history: list[dict] = body.get("history", [])
+
+    if not question:
+        return jsonify({"response": ""}), 400
+
+    # Locate frame image and depth map
+    image_path: str | None = None
+    for ext in (".jpg", ".jpeg", ".png"):
+        p = DATA_DIRS["frames"] / f"{image_id}{ext}"
+        if p.exists():
+            image_path = str(p)
+            break
+    depth_p = DATA_DIRS["depth"] / f"{image_id}_depth.png"
+    depth_image_path = str(depth_p) if depth_p.exists() else None
+
+    # Load all pipeline context for this frame
+    meas_data    = _load(DATA_DIRS["measurements"] / f"{image_id}_measurements.json")
+    anchors_data = _load(DATA_DIRS["detections"]   / f"{image_id}_anchors.json")
+
+    from src.vlm.prompts import (
+        ANCHOR_CALIBRATED_PROMPT_TEMPLATE,
+        ELEMENT_DIMENSIONS_BLOCK,
+        STANDARDS_BLOCK,
+        build_calibration_summary,
+        build_reference_objects_block,
+        format_measurements_block,
+    )
+
+    # Bounding box summary so Claude knows exact pixel locations
+    bbox_lines = []
+    for a in anchors_data.get("anchors", []):
+        b = a["box_pixels"]
+        bbox_lines.append(
+            f"  [{a['type']}] id={a['id']} conf={a['confidence']:.2f} "
+            f"box=[{b[0]:.0f},{b[1]:.0f},{b[2]:.0f},{b[3]:.0f}] "
+            f"center=({a['center_x']:.0f},{a['center_y']:.0f}) "
+            f"real_width={a['real_width_inches']}in"
+        )
+    bbox_block = "━━━ DETECTED ANCHOR BOUNDING BOXES (image pixels) ━━━\n"
+    bbox_block += "\n".join(bbox_lines) if bbox_lines else "  None detected."
+
+    # Conversation history text
+    history_block = "\n\n".join(
+        f"User: {h['question']}\nAssistant: {h['answer']}"
+        for h in history[-4:] if h.get("question")
+    )
+
+    prompt = ANCHOR_CALIBRATED_PROMPT_TEMPLATE.format(
+        question=question,
+        dimensions_block=ELEMENT_DIMENSIONS_BLOCK,
+        calibration_summary=build_calibration_summary(meas_data),
+        measurements_block=format_measurements_block(meas_data),
+        standards_block=STANDARDS_BLOCK,
+        reference_objects_block=build_reference_objects_block(meas_data),
+    )
+    if history_block:
+        prompt = f"CONVERSATION SO FAR:\n{history_block}\n\n---\n\n{prompt}"
+    if bbox_lines:
+        prompt = f"{bbox_block}\n\n{prompt}"
+
+    # Append brevity instruction to follow-up questions
+    prompt += "\n\nAnswer concisely — 3-5 sentences or a short table. No full re-report."
+
+    try:
+        from src.vlm.clients import call_claude
+        response = call_claude(
+            prompt,
+            image_path=image_path,
+            secondary_image_path=depth_image_path,
+            cache_key=f"chat:{image_id}:{hash(prompt)}",
+        )
+    except Exception as e:
+        response = f"Error calling Claude: {e}"
+
+    return jsonify({"response": response})
 
 
 if __name__ == "__main__":

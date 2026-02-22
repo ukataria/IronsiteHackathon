@@ -165,6 +165,7 @@ def calibrate_image(
     anchors_json_path: str,
     depth_npy_path: str,
     output_dir: str,
+    fallback_ppi: float = 0.0,
 ) -> dict:
     """
     Full calibration pipeline for one image.
@@ -217,6 +218,15 @@ def calibrate_image(
             key=lambda p: (p["confidence"], p["n_anchors"]),
             default=None,
         )
+
+    # No anchors detected — carry forward last known good scale if available
+    if primary is None and fallback_ppi > 0:
+        primary = {
+            "plane_id": "carried_forward",
+            "pixels_per_inch": fallback_ppi,
+            "confidence": 0.3,  # lower confidence to signal it's inferred
+        }
+        logger.info(f"{image_id}: no anchors — using carried-forward scale {fallback_ppi:.2f} px/in")
 
     result = {
         "image_id": image_id,

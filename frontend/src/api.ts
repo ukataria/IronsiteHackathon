@@ -44,3 +44,19 @@ export async function fetchVlmResponse(
   const data = await res.json();
   return data.response ?? '';
 }
+
+/** POST /api/chat/<image_id> — follow-up question about this frame. */
+export async function sendChatMessage(
+  imageId: string,
+  question: string,
+  history: { question: string; answer: string }[],
+): Promise<string> {
+  const res = await fetch(`/api/chat/${imageId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, history }),
+  });
+  if (!res.ok) return 'Error reaching server.';
+  const data = await res.json();
+  return data.response ?? '';
+}
