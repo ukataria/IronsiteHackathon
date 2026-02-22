@@ -7,7 +7,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.utils import cached_api_call, get_image_id, image_to_base64, load_json, save_json, setup_logger
+from src.utils import (
+    cached_api_call,
+    get_image_id,
+    image_to_base64,
+    load_json,
+    save_json,
+    setup_logger,
+)
 from src.vlm.prompts import (
     ANCHOR_CALIBRATED_PROMPT_TEMPLATE,
     BASELINE_PROMPT_TEMPLATE,
@@ -17,6 +24,7 @@ from src.vlm.prompts import (
     STANDARDS_BLOCK,
     build_calibration_summary,
     build_chat_opening_prompt,
+    build_reference_objects_block,
     format_measurements_block,
 )
 
@@ -37,7 +45,7 @@ def call_claude(
     cache_key: str = "",
     model: str = "claude-sonnet-4-6",
 ) -> str:
-    """Call Claude API with disk caching. Supports up to two images. Returns response text."""
+    """Call Claude API with disk caching. Supports two images."""
     import anthropic
 
     image_b64 = image_to_base64(image_path) if image_path else None
@@ -63,11 +71,13 @@ def call_claude(
             })
         content.append({"type": "text", "text": prompt})
 
+        messages = [{"role": "user", "content": content}]
+
         response = client.messages.create(
             model=model,
             max_tokens=2048,
             system=system,
-            messages=[{"role": "user", "content": content}],
+            messages=messages,
         )
         return response.content[0].text
 
@@ -199,6 +209,7 @@ def run_inspection(
     depth_png_path: str | None,
     condition: str,
     vlm: str = "claude",
+    model: str | None = None,
     output_dir: str = "data/results",
     question: str = "What deficiencies exist in this construction work? Provide a full inspection report.",
 ) -> dict:
@@ -206,7 +217,8 @@ def run_inspection(
     Run one VLM condition on one image.
 
     condition: 'baseline' | 'depth' | 'anchor_calibrated'
-    vlm: 'claude' | 'gpt4o'
+    vlm: 'claude' | 'gpt4o' | 'ollama'
+    model: override the default model for the chosen vlm
 
     Saves: {output_dir}/{image_id}_{condition}_{vlm}.json
     Returns the result dict.
@@ -232,12 +244,14 @@ def run_inspection(
     elif condition == "anchor_calibrated":
         mblock = format_measurements_block(measurements)
         cal_summary = build_calibration_summary(measurements)
+        ref_block = build_reference_objects_block(measurements)
         prompt = ANCHOR_CALIBRATED_PROMPT_TEMPLATE.format(
             question=question,
             dimensions_block=ELEMENT_DIMENSIONS_BLOCK,
             calibration_summary=cal_summary,
             measurements_block=mblock,
             standards_block=STANDARDS_BLOCK,
+            reference_objects_block=ref_block,
         )
         primary_image = image_path
         secondary_image = depth_png_path if depth_exists else None
@@ -245,12 +259,25 @@ def run_inspection(
     else:
         raise ValueError(f"Unknown condition: {condition}. Use 'baseline', 'depth', or 'anchor_calibrated'.")
 
-    # Select VLM caller — only Claude supports secondary_image natively here
+    # Select VLM caller
     if vlm == "claude":
-        response = call_claude(prompt, primary_image, secondary_image, cache_key=cache_key)
+        response = call_claude(
+            prompt, primary_image, secondary_image,
+            cache_key=cache_key,
+            model=model or "claude-sonnet-4-6",
+        )
+    elif vlm == "ollama":
+        response = call_ollama(
+            prompt, primary_image,
+            cache_key=cache_key,
+            model=model or "gemma3:27b-it-q8_0",
+        )
     else:
-        # GPT-4o: send primary image only (depth as separate call not yet supported)
-        response = call_gpt4o(prompt, primary_image, cache_key=cache_key)
+        response = call_gpt4o(
+            prompt, primary_image,
+            cache_key=cache_key,
+            model=model or "gpt-4o",
+        )
 
     result = {
         "image_id": image_id,
@@ -273,15 +300,25 @@ def run_inspection(
 # ---------------------------------------------------------------------------
 
 
+_PROVIDER_DEFAULT_MODEL: dict[str, str] = {
+    "claude": "claude-sonnet-4-6",
+    "ollama": "gemma3:27b-it-q8_0",
+    "gpt4o": "gpt-4o",
+}
+
+
 class InspectionSession:
     """
-    Multi-turn Claude chat session grounded in a construction image + depth map + measurements.
+    Multi-turn VLM chat session grounded in a construction image + depth map + measurements.
+    Supports Claude (Anthropic), Ollama (local), and GPT-4o (OpenAI).
 
     Usage:
-        session = InspectionSession(image_path, measurements, depth_png_path=depth_path)
-        report  = session.start()          # initial inspection report
+        session = InspectionSession(image_path, measurements)
+        session = InspectionSession(image_path, measurements, provider="ollama")
+        session = InspectionSession(image_path, measurements, provider="ollama",
+                                    model="gemma3:27b-it-q8_0")
+        report  = session.start("What do you see?")
         answer  = session.ask("Where exactly is the non-compliant mortar joint?")
-        answer2 = session.ask("What would remediation look like?")
     """
 
     def __init__(
@@ -289,13 +326,13 @@ class InspectionSession:
         image_path: str,
         measurements: dict,
         depth_png_path: str | None = None,
-        model: str = "claude-sonnet-4-6",
+        provider: str = "claude",
+        model: str | None = None,
         system: str = INSPECTION_SYSTEM_PROMPT,
     ) -> None:
-        self.image_path = image_path
+        self._provider = provider
+        self.model = model or _PROVIDER_DEFAULT_MODEL.get(provider, "claude-sonnet-4-6")
         self.measurements = measurements
-        self.depth_png_path = depth_png_path
-        self.model = model
         self.system = system
         self.history: list[dict] = []
 
@@ -307,37 +344,28 @@ class InspectionSession:
         if depth_png_path and Path(depth_png_path).exists():
             self._depth_b64 = image_to_base64(depth_png_path)
 
+    def _make_image_block(self, media_type: str, data: str) -> dict:
+        """Build an image content block in the format the current provider expects."""
+        if self._provider == "claude":
+            return {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}}
+        else:
+            return {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}}
+
     def start(
         self,
         question: str = "Provide a full inspection report.",
     ) -> str:
         """
-        Send the opening turn: original image + depth map (if available) + measurements + question.
+        Send the opening turn: image + depth map (if available) + measurements + question.
         Returns the initial inspection report.
         """
         if self.history:
             raise RuntimeError("Session already started. Use ask() for follow-up questions.")
 
         opening_prompt = build_chat_opening_prompt(self.measurements, question)
-        content: list = [
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": self._media_type,
-                    "data": self._image_b64,
-                },
-            },
-        ]
+        content: list = [self._make_image_block(self._media_type, self._image_b64)]
         if self._depth_b64:
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": self._depth_b64,
-                },
-            })
+            content.append(self._make_image_block("image/png", self._depth_b64))
         content.append({"type": "text", "text": opening_prompt})
 
         self.history.append({"role": "user", "content": content})
@@ -351,20 +379,32 @@ class InspectionSession:
         return self._send()
 
     def _send(self) -> str:
-        """POST current history to Claude, append response, return text."""
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        """POST current history to the configured provider, append response, return text."""
         try:
-            response = client.messages.create(
-                model=self.model,
-                max_tokens=2048,
-                system=self.system,
-                messages=self.history,
-            )
-            text = response.content[0].text
+            if self._provider == "claude":
+                import anthropic
+                client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+                response = client.messages.create(
+                    model=self.model,
+                    max_tokens=2048,
+                    system=self.system,
+                    messages=self.history,
+                )
+                text = response.content[0].text
+            else:
+                import openai
+                base_url = "http://localhost:11434/v1" if self._provider == "ollama" else None
+                api_key = "ollama" if self._provider == "ollama" else os.environ.get("OPENAI_API_KEY", "")
+                client = openai.OpenAI(api_key=api_key, base_url=base_url)
+                messages = [{"role": "system", "content": self.system}] + self.history
+                response = client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=2048,
+                    messages=messages,
+                )
+                text = response.choices[0].message.content or ""
         except Exception as e:
-            logger.error(f"Claude chat failed: {e}")
+            logger.error(f"{self._provider} chat failed: {e}")
             text = f"ERROR: {e}"
         self.history.append({"role": "assistant", "content": text})
         return text

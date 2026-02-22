@@ -49,7 +49,14 @@ Electrical Outlet Box (Single-gang, NEC Article 314):
   Depth:   2.5 in (standard)
   Required centerline height from finished floor: 12.0 in (NEC, ±1 in)
 
-Mortar Joints:  3/8 in nominal  (tolerance: ±1/8 in)"""
+Mortar Joints:  3/8 in nominal  (tolerance: ±1/8 in)
+
+Orientation note:
+  Bricks appear in multiple orientations — stretcher (long face, 7.625" wide),
+  header (end face, 3.625" wide), or soldier (upright, 2.25" wide). CMU blocks
+  similarly. When estimating distances, identify which face is visible before
+  applying a unit conversion. The scale bar was calibrated using each object's
+  longest detected dimension to account for rotation."""
 
 # ---------------------------------------------------------------------------
 # Construction standards reference
@@ -124,11 +131,13 @@ Two images have been provided:
   Image 2: Depth map (jet colormap — red/warm = closer to camera, blue/cool = farther away)
 
 Use the depth map to understand spatial layout and which surfaces share the same plane. \
-Use the calibrated measurements below to answer questions in real-world inches.
+Use the calibrated measurements to answer questions in real-world inches.
 
 Question: {question}
 
 {dimensions_block}
+
+{reference_objects_block}
 
 ━━━ CALIBRATED SPATIAL MEASUREMENTS ━━━
 Calibration method: known physical dimensions of detected objects (bricks, CMU, outlet boxes)
@@ -139,9 +148,9 @@ Calibration method: known physical dimensions of detected objects (bricks, CMU, 
 ━━━ APPLICABLE CONSTRUCTION STANDARDS ━━━
 {standards_block}
 
-When answering questions about distances or sizes: use the provided scale \
-(pixels per inch) combined with the depth map to reason spatially. \
-For pass/fail, use ONLY the measured values above — do not visually re-estimate distances.
+For pass/fail assessments: use ONLY the pre-computed measured values above. \
+For any other distance question: use reference objects as described above \
+and show your reasoning. Do not guess distances without referencing a known object.
 
 Provide a structured inspection report:
 1. Per-element pass/fail with exact measurements
@@ -150,22 +159,66 @@ Provide a structured inspection report:
 4. Overall pass/fail recommendation"""
 
 
+# Human-readable descriptions of each detectable object type's real-world dimensions.
+# Used to tell the VLM what it can use as a visual ruler.
+_REFERENCE_DIMS: dict[str, str] = {
+    "brick": "7.625\" long × 2.25\" tall (8.0\" × 2.625\" nominal with 3/8\" mortar joints)",
+    "cmu": "15.625\" long × 7.625\" tall (16.0\" × 8.0\" nominal with 3/8\" mortar joints)",
+    "electrical_box": "2.0\" wide × 3.0\" tall (single-gang NEC box)",
+}
+
+
+
+def build_reference_objects_block(measurements: dict) -> str:
+    """
+    Build the visual reference section injected into the VLM prompt.
+    Describes detected objects with known dimensions so Claude can use them as rulers
+    for arbitrary distance questions about anything in the image.
+    """
+    counts = measurements.get("element_counts", {})
+    lines = ["━━━ VISUAL SCALE REFERENCE ━━━"]
+
+    known = {k: v for k, v in counts.items() if k in _REFERENCE_DIMS}
+    if known:
+        lines.append("Detected objects with known real-world dimensions (use as visual rulers):")
+        for obj_type, count in known.items():
+            lines.append(
+                f"  - {obj_type.replace('_', ' ').title()} "
+                f"({count} visible): {_REFERENCE_DIMS[obj_type]}"
+            )
+        lines.append("  Important: identify the orientation of each object before using it as")
+        lines.append("  a ruler — a soldier brick (upright) is 2.25\" wide, not 7.625\".")
+    else:
+        lines.append("No objects with known dimensions detected.")
+
+    lines.append("")
+    lines.append("To estimate any distance in the image:")
+    lines.append("  Count how many reference objects span the distance and multiply "
+                 "by the known dimension.")
+    lines.append("  Always show your reasoning step "
+                 "(e.g. \"spans ~2.3 brick-widths = 2.3 × 8.0\\\" = 18.4\\\"\")")
+    return "\n".join(lines)
+
+
+
 def build_chat_opening_prompt(
     measurements: dict,
     question: str = "Provide a full inspection report.",
 ) -> str:
     """
     Build the first-turn prompt for a chat session.
-    Includes dimensions, calibrated measurements, and standards as grounding context.
+    Includes scale reference, dimensions, calibrated measurements, and standards.
     """
     mblock = format_measurements_block(measurements)
     cal_summary = build_calibration_summary(measurements)
+    ref_block = build_reference_objects_block(measurements)
     return ANCHOR_CALIBRATED_PROMPT_TEMPLATE.format(
         question=question,
         dimensions_block=ELEMENT_DIMENSIONS_BLOCK,
         calibration_summary=cal_summary,
         measurements_block=mblock,
         standards_block=STANDARDS_BLOCK,
+        reference_objects_block=ref_block,
     )
 
 
