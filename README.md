@@ -8,7 +8,7 @@
 
 Modern vision-language models (VLMs) like GPT-4o, Claude, and Gemini are remarkably capable at understanding scenes — but they consistently fail when asked to *measure* them. They can recognize that wall studs should be spaced 16 inches on center. They cannot tell you whether the studs in a photo actually are.
 
-**DeepAnchor** solves this by turning ordinary construction site images into measurable, metrically-grounded environments — no LiDAR, no specialized hardware required. The system exploits a simple but powerful insight: construction sites are full of objects with known, standardized dimensions (bricks, CMU blocks, electrical boxes). By detecting these objects and using them as calibration anchors, DeepAnchor can estimate a pixel-to-meter scale factor and inject physically grounded measurements directly into a VLM's reasoning context.
+**DeepAnchor** solves this by turning ordinary construction site images into measurable, metrically-grounded environments — no LiDAR, no specialized hardware required. The system exploits a simple but powerful insight: construction sites are full of objects with known, standardized dimensions. By detecting these objects and using them as calibration anchors, DeepAnchor can estimate a pixel-to-meter scale factor and inject physically grounded measurements directly into a VLM's reasoning context.
 
 The result: automated spatial inspection capable of catching defects — wrong stud spacing, improper rebar placement, missing clearances — *before* they get buried behind drywall.
 
