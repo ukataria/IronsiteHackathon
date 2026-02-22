@@ -142,3 +142,85 @@ Your distance estimate (number only):"""
                 "raw_response": f"Error: {str(e)}",
                 "model": self.model
             }
+
+    def query_distance(
+        self,
+        image_path: str,
+        point1: tuple[int, int],
+        point2: tuple[int, int],
+        prompt: str = None
+    ) -> Dict[str, Any]:
+        """
+        Query the VLM for distance between two points.
+
+        Args:
+            image_path: Path to RGB image
+            point1: (u, v) first point coordinates
+            point2: (u, v) second point coordinates
+            prompt: Custom prompt (optional)
+
+        Returns:
+            Dict with keys: predicted_distance (float or None), raw_response (str), model (str)
+        """
+        # Use default distance prompt if none provided
+        if prompt is None:
+            prompt = f"""You are analyzing an indoor scene with two points marked:
+- Point A at pixel ({point1[0]}, {point1[1]})
+- Point B at pixel ({point2[0]}, {point2[1]})
+
+Estimate the 3D Euclidean distance in meters between these two points.
+
+CRITICAL: You MUST provide a numeric estimate.
+Output ONLY a number in meters (e.g., "1.5")."""
+
+        # Encode image
+        base64_image, media_type = self.encode_image(image_path)
+
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=10,
+                temperature=0.0,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": base64_image
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ]
+            )
+
+            raw_response = response.content[0].text.strip()
+
+            # Parse numeric answer
+            try:
+                import re
+                numbers = re.findall(r'\d+\.?\d*', raw_response)
+                predicted_distance = float(numbers[0]) if numbers else None
+            except (ValueError, IndexError):
+                predicted_distance = None
+
+            return {
+                "predicted_distance": predicted_distance,
+                "raw_response": raw_response,
+                "model": self.model
+            }
+
+        except Exception as e:
+            return {
+                "predicted_distance": None,
+                "raw_response": f"Error: {str(e)}",
+                "model": self.model
+            }
