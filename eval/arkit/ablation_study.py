@@ -73,8 +73,25 @@ class VLMOnlyCondition(AblationCondition):
 
     def query_distance(self, image_path, point1, point2, prompt, **kwargs):
         """Query VLM directly without any augmentation."""
-        response = self.vlm.query_image(image_path, prompt)
-        return {"response": response, "augmented_prompt": prompt}
+        # Use the VLM's native query method
+        import base64
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
+
+        from anthropic import Anthropic
+        client = Anthropic()
+        response = client.messages.create(
+            model=self.vlm.model,
+            max_tokens=10,
+            temperature=0.0,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                {"type": "text", "text": prompt}
+            ]}]
+        )
+        raw_response = response.content[0].text
+
+        return {"response": raw_response, "augmented_prompt": prompt}
 
 
 class VLMPlusDepthCondition(AblationCondition):
@@ -111,9 +128,26 @@ class VLMPlusDepthCondition(AblationCondition):
         depth_info += f"This depth information is from a monocular depth estimation model.\n"
 
         augmented_prompt = prompt + depth_info
-        response = self.vlm.query_image(image_path, augmented_prompt)
 
-        return {"response": response, "augmented_prompt": augmented_prompt, "depth_a": d1, "depth_b": d2}
+        # Query VLM with augmented prompt
+        import base64
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
+
+        from anthropic import Anthropic
+        client = Anthropic()
+        response = client.messages.create(
+            model=self.vlm.model,
+            max_tokens=10,
+            temperature=0.0,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                {"type": "text", "text": augmented_prompt}
+            ]}]
+        )
+        raw_response = response.content[0].text
+
+        return {"response": raw_response, "augmented_prompt": augmented_prompt, "depth_a": d1, "depth_b": d2}
 
 
 class VLMPlusAnchorsCondition(AblationCondition):
@@ -131,8 +165,24 @@ class VLMPlusAnchorsCondition(AblationCondition):
 
         if not anchors:
             # No anchors - same as VLM only
-            return {"response": self.vlm.query_image(image_path, prompt),
-                   "augmented_prompt": prompt, "anchors_detected": 0}
+            import base64
+            with open(image_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+
+            from anthropic import Anthropic
+            client = Anthropic()
+            response = client.messages.create(
+                model=self.vlm.model,
+                max_tokens=10,
+                temperature=0.0,
+                messages=[{"role": "user", "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                    {"type": "text", "text": prompt}
+                ]}]
+            )
+            raw_response = response.content[0].text
+
+            return {"response": raw_response, "augmented_prompt": prompt, "anchors_detected": 0}
 
         # Build anchor information
         anchor_info = f"\n\nKNOWN-DIMENSION OBJECTS DETECTED:\n"
@@ -149,9 +199,26 @@ class VLMPlusAnchorsCondition(AblationCondition):
         anchor_info += "You can use these known dimensions to help calibrate your distance estimate.\n"
 
         augmented_prompt = prompt + anchor_info
-        response = self.vlm.query_image(image_path, augmented_prompt)
 
-        return {"response": response, "augmented_prompt": augmented_prompt,
+        # Query VLM
+        import base64
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
+
+        from anthropic import Anthropic
+        client = Anthropic()
+        response = client.messages.create(
+            model=self.vlm.model,
+            max_tokens=10,
+            temperature=0.0,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                {"type": "text", "text": augmented_prompt}
+            ]}]
+        )
+        raw_response = response.content[0].text
+
+        return {"response": raw_response, "augmented_prompt": augmented_prompt,
                "anchors_detected": len(anchors)}
 
 
@@ -195,9 +262,26 @@ class FullSpatialAnchorCondition(AblationCondition):
             depth_info += f"- Depth at point B: {d2:.2f} meters\n"
 
             augmented_prompt = prompt + depth_info
-            response = self.vlm.query_image(image_path, augmented_prompt)
 
-            return {"response": response, "augmented_prompt": augmented_prompt,
+            # Query VLM
+            import base64
+            with open(image_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+
+            from anthropic import Anthropic
+            client = Anthropic()
+            response = client.messages.create(
+                model=self.vlm.model,
+                max_tokens=10,
+                temperature=0.0,
+                messages=[{"role": "user", "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                    {"type": "text", "text": augmented_prompt}
+                ]}]
+            )
+            raw_response = response.content[0].text
+
+            return {"response": raw_response, "augmented_prompt": augmented_prompt,
                    "anchors_detected": 0, "calibrated": False}
 
         # Perform spatial calibration
@@ -206,8 +290,24 @@ class FullSpatialAnchorCondition(AblationCondition):
 
         if not depth_planes:
             # Calibration failed - fall back to VLM only
-            return {"response": self.vlm.query_image(image_path, prompt),
-                   "augmented_prompt": prompt, "anchors_detected": len(anchors),
+            import base64
+            with open(image_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+
+            from anthropic import Anthropic
+            client = Anthropic()
+            response = client.messages.create(
+                model=self.vlm.model,
+                max_tokens=10,
+                temperature=0.0,
+                messages=[{"role": "user", "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                    {"type": "text", "text": prompt}
+                ]}]
+            )
+            raw_response = response.content[0].text
+
+            return {"response": raw_response, "augmented_prompt": prompt, "anchors_detected": len(anchors),
                    "calibrated": False}
 
         # Build calibration information
@@ -235,9 +335,26 @@ class FullSpatialAnchorCondition(AblationCondition):
             calib_info += f"- Calibration confidence: {measurement['confidence']:.2f}\n"
 
         augmented_prompt = prompt + calib_info
-        response = self.vlm.query_image(image_path, augmented_prompt)
 
-        return {"response": response, "augmented_prompt": augmented_prompt,
+        # Query VLM
+        import base64
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
+
+        from anthropic import Anthropic
+        client = Anthropic()
+        response = client.messages.create(
+            model=self.vlm.model,
+            max_tokens=10,
+            temperature=0.0,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                {"type": "text", "text": augmented_prompt}
+            ]}]
+        )
+        raw_response = response.content[0].text
+
+        return {"response": raw_response, "augmented_prompt": augmented_prompt,
                "anchors_detected": len(anchors), "calibrated": True,
                "measurement": measurement}
 
