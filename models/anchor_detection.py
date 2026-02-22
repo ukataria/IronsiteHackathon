@@ -259,6 +259,71 @@ class AnchorDetector:
             ANCHOR_DIMENSIONS["cup_width"] = 3.5
             return "cup_width"
 
+        if "person" in class_lower:
+            # Use for scale - average adult height ~66 inches (5'6")
+            # But use shoulder width as more reliable anchor ~18 inches
+            if aspect_ratio > 1.5:  # Standing person
+                ANCHOR_DIMENSIONS["person_height"] = 66.0
+                return "person_height"
+            else:  # Sitting or partial
+                ANCHOR_DIMENSIONS["person_torso"] = 18.0
+                return "person_torso"
+
+        if "clock" in class_lower:
+            # Wall clock diameter ~10-12 inches
+            ANCHOR_DIMENSIONS["clock_diameter"] = 11.0
+            return "clock_diameter"
+
+        if "vase" in class_lower:
+            # Typical vase height ~10-14 inches
+            ANCHOR_DIMENSIONS["vase_height"] = 12.0
+            return "vase_height"
+
+        if "potted plant" in class_lower or "plant" in class_lower:
+            # Typical potted plant pot diameter ~8-12 inches
+            ANCHOR_DIMENSIONS["plant_pot"] = 10.0
+            return "plant_pot"
+
+        if "keyboard" in class_lower:
+            # Standard keyboard width ~18 inches
+            ANCHOR_DIMENSIONS["keyboard_width"] = 18.0
+            return "keyboard_width"
+
+        if "mouse" in class_lower:
+            # Computer mouse length ~4-5 inches
+            ANCHOR_DIMENSIONS["mouse_length"] = 4.5
+            return "mouse_length"
+
+        if "remote" in class_lower:
+            # TV remote length ~8 inches
+            ANCHOR_DIMENSIONS["remote_length"] = 8.0
+            return "remote_length"
+
+        if "cell phone" in class_lower or "phone" in class_lower:
+            # Smartphone height ~6 inches
+            ANCHOR_DIMENSIONS["phone_height"] = 6.0
+            return "phone_height"
+
+        if "backpack" in class_lower or "suitcase" in class_lower:
+            # Standard backpack height ~18-20 inches
+            ANCHOR_DIMENSIONS["backpack_height"] = 19.0
+            return "backpack_height"
+
+        if "bowl" in class_lower:
+            # Cereal/salad bowl diameter ~6-8 inches
+            ANCHOR_DIMENSIONS["bowl_diameter"] = 7.0
+            return "bowl_diameter"
+
+        if "scissors" in class_lower:
+            # Standard scissors length ~8 inches
+            ANCHOR_DIMENSIONS["scissors_length"] = 8.0
+            return "scissors_length"
+
+        if "umbrella" in class_lower:
+            # Closed umbrella length ~12 inches
+            ANCHOR_DIMENSIONS["umbrella_length"] = 12.0
+            return "umbrella_length"
+
         # Fall back to aspect ratio heuristics for generic objects
         aspect_ratio = height / width if width > 0 else 0
 

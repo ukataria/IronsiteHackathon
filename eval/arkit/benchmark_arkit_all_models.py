@@ -392,7 +392,7 @@ def plot_results(results_by_model, output_path):
             labels.append(model_name)
 
     if error_data:
-        bp = ax.boxplot(error_data, labels=labels, vert=False, patch_artist=True)
+        bp = ax.boxplot(error_data, tick_labels=labels, vert=False, patch_artist=True)
 
         # Color boxes by category
         for patch, label in zip(bp['boxes'], labels):
@@ -408,8 +408,14 @@ def plot_results(results_by_model, output_path):
         ax.text(0.5, 0.5, "No data to display", ha='center', va='center', transform=ax.transAxes)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"Saved visualization to: {output_path}")
+
+    # Ensure parent directory exists
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    plt.savefig(str(output_path), dpi=300, bbox_inches='tight')
+    plt.close(fig)  # Close to free memory
+    print(f"✓ Saved visualization to: {output_path}")
 
     return df
 
@@ -569,9 +575,9 @@ def main():
 
     print(f"\n✓ Results saved to: {results_path}")
 
-    # Generate visualization
+    # Generate visualization (save to main directory)
     print("\nGenerating visualization...")
-    plot_path = out_dir / "arkit_benchmark_comparison.png"
+    plot_path = Path("arkit_benchmark_comparison.png")  # Save to main directory
     df = plot_results(all_results, plot_path)
 
     # Print summary table
