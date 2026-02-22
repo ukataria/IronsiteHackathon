@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.utils import (
-    ANCHOR_DIMENSIONS,
-    ANCHOR_PRIMARY_DIMENSION,
     draw_boxes,
     get_image_id,
     load_image,
@@ -24,6 +22,69 @@ DEFAULT_CONF = 0.25
 # Class name → anchor type mapping
 # Handles all variants that may appear in the finetuned model's names dict.
 # ---------------------------------------------------------------------------
+
+# Minimum long-axis pixel size to trust a detection for calibration.
+# Smaller boxes are likely far away and produce noisy scale estimates.
+MIN_ANCHOR_PX = 20
+
+
+def _infer_face(
+    anchor_type: str,
+    px_w: float,
+    px_h: float,
+) -> tuple[str, float, float]:
+    """
+    Infer which face of the object is visible and return
+    (orientation, pixel_measure, real_measure_inches).
+
+    Brick faces (ASTM C216 standard modular):
+      Stretcher (most common): 7.625" × 2.25"  pixel aspect ≈ 3.39
+      Header:                  7.625" × 3.625" pixel aspect ≈ 2.10
+      End/soldier:             3.625" × 2.25"  pixel aspect ≈ 1.61
+      → if pixel aspect < 2.0: roughly square → end/soldier face → long dim = 3.625"
+      → if pixel aspect ≥ 2.0: elongated → stretcher/header face → long dim = 7.625"
+
+    CMU faces (ASTM C90 8×8×16):
+      Front: 15.625" × 7.625"  pixel aspect ≈ 2.05
+      End:    7.625" × 7.625"  pixel aspect ≈ 1.00
+      → if pixel aspect < 1.5: roughly square → end face → long dim = 7.625"
+      → if pixel aspect ≥ 1.5: elongated → front face → long dim = 15.625"
+
+    Electrical box (single-gang, NEC):
+      Always mounted flat on wall → always face-on (2.0" × 3.0")
+      → match long pixel dim to 3.0", short pixel dim to 2.0"
+    """
+    px_long = max(px_w, px_h)
+    px_short = min(px_w, px_h)
+    aspect = px_long / max(px_short, 1.0)
+
+    if anchor_type == "brick":
+        if aspect < 2.0:
+            # Near-square → seeing the end/soldier face (3.625" × 2.25")
+            return "end_on", px_long, 3.625
+        else:
+            # Elongated → seeing the stretcher/header face; long axis = 7.625"
+            orientation = "horizontal" if px_w >= px_h else "vertical"
+            return orientation, px_long, 7.625
+
+    elif anchor_type == "cmu":
+        if aspect < 1.5:
+            # Near-square → seeing the end face (7.625" × 7.625")
+            return "end_on", px_long, 7.625
+        else:
+            # Elongated → seeing the front face; long axis = 15.625"
+            orientation = "horizontal" if px_w >= px_h else "vertical"
+            return orientation, px_long, 15.625
+
+    elif anchor_type == "electrical_box":
+        # Always face-on to wall: 2.0" wide × 3.0" tall
+        # Long pixel dim → 3.0", short pixel dim → 2.0"
+        orientation = "vertical" if px_h >= px_w else "horizontal"
+        return orientation, px_long, 3.0
+
+    else:
+        orientation = "horizontal" if px_w >= px_h else "vertical"
+        return orientation, px_long, 7.625
 
 YOLO_CLASS_TO_ANCHOR: dict[str, str] = {
     # brick variants
@@ -113,8 +174,16 @@ def detect_anchors_yolo(
             px_h = abs(y2 - y1)
             confidence = float(box.conf)
 
-            dim_key = ANCHOR_PRIMARY_DIMENSION.get(anchor_type, "brick_length")
-            real_width = ANCHOR_DIMENSIONS[dim_key]
+            orientation, pixel_measure, real_measure = _infer_face(anchor_type, px_w, px_h)
+
+            # Boxes smaller than MIN_ANCHOR_PX are too far away for reliable calibration.
+            # Set pixel_width=0 so calibrate.py skips them (it filters s > 0).
+            too_small = max(px_w, px_h) < MIN_ANCHOR_PX
+            if too_small:
+                logger.debug(
+                    f"  Anchor {i} ({anchor_type}) too small for calibration "
+                    f"({max(px_w, px_h):.1f}px < {MIN_ANCHOR_PX}px)"
+                )
 
             anchors.append({
                 "id": i,
@@ -122,11 +191,13 @@ def detect_anchors_yolo(
                 "label_raw": raw_label,
                 "box_pixels": [x1, y1, x2, y2],
                 "confidence": confidence,
-                "pixel_width": px_w,
+                "pixel_width": 0.0 if too_small else pixel_measure,
+                "pixel_width_raw": px_w,
                 "pixel_height": px_h,
                 "center_x": (x1 + x2) / 2,
                 "center_y": (y1 + y2) / 2,
-                "real_width_inches": real_width,
+                "real_width_inches": real_measure,
+                "orientation": orientation,
             })
 
     except Exception as e:

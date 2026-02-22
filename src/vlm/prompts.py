@@ -49,7 +49,14 @@ Electrical Outlet Box (Single-gang, NEC Article 314):
   Depth:   2.5 in (standard)
   Required centerline height from finished floor: 12.0 in (NEC, ±1 in)
 
-Mortar Joints:  3/8 in nominal  (tolerance: ±1/8 in)"""
+Mortar Joints:  3/8 in nominal  (tolerance: ±1/8 in)
+
+Orientation note:
+  Bricks appear in multiple orientations — stretcher (long face, 7.625" wide),
+  header (end face, 3.625" wide), or soldier (upright, 2.25" wide). CMU blocks
+  similarly. When estimating distances, identify which face is visible before
+  applying a unit conversion. The scale bar was calibrated using each object's
+  longest detected dimension to account for rotation."""
 
 # ---------------------------------------------------------------------------
 # Construction standards reference
@@ -120,15 +127,17 @@ Note: You have relative depth information but no calibrated real-world measureme
 
 ANCHOR_CALIBRATED_PROMPT_TEMPLATE = """You are inspecting a construction site. \
 Two images have been provided:
-  Image 1: Original construction photo
+  Image 1: Original construction photo (with scale bar in bottom-left corner)
   Image 2: Depth map (jet colormap — red/warm = closer to camera, blue/cool = farther away)
 
 Use the depth map to understand spatial layout and which surfaces share the same plane. \
-Use the calibrated measurements below to answer questions in real-world inches.
+Use the calibrated measurements and scale bar to answer questions in real-world inches.
 
 Question: {question}
 
 {dimensions_block}
+
+{reference_objects_block}
 
 ━━━ CALIBRATED SPATIAL MEASUREMENTS ━━━
 Calibration method: known physical dimensions of detected objects (bricks, CMU, outlet boxes)
@@ -139,9 +148,9 @@ Calibration method: known physical dimensions of detected objects (bricks, CMU, 
 ━━━ APPLICABLE CONSTRUCTION STANDARDS ━━━
 {standards_block}
 
-When answering questions about distances or sizes: use the provided scale \
-(pixels per inch) combined with the depth map to reason spatially. \
-For pass/fail, use ONLY the measured values above — do not visually re-estimate distances.
+For pass/fail assessments: use ONLY the pre-computed measured values above. \
+For any other distance question: use the scale bar or reference objects as described above \
+and show your reasoning. Do not guess distances without referencing the scale.
 
 Provide a structured inspection report:
 1. Per-element pass/fail with exact measurements
@@ -150,22 +159,145 @@ Provide a structured inspection report:
 4. Overall pass/fail recommendation"""
 
 
+# Human-readable descriptions of each detectable object type's real-world dimensions.
+# Used to tell the VLM what it can use as a visual ruler.
+_REFERENCE_DIMS: dict[str, str] = {
+    "brick": "7.625\" long × 2.25\" tall (8.0\" × 2.625\" nominal with 3/8\" mortar joints)",
+    "cmu": "15.625\" long × 7.625\" tall (16.0\" × 8.0\" nominal with 3/8\" mortar joints)",
+    "electrical_box": "2.0\" wide × 3.0\" tall (single-gang NEC box)",
+}
+
+
+def pick_bar_inches(measurements: dict) -> float:
+    """
+    Pick a round bar length (inches) for the scale bar overlay.
+    Prefers a length that matches a detected object's nominal size,
+    falls back to the first candidate that gives >= 100px.
+    """
+    counts = measurements.get("element_counts", {})
+    ppi = measurements.get("scale_pixels_per_inch", 0.0)
+
+    if "brick" in counts:
+        return 8.0       # 1 nominal brick + mortar
+    if "cmu" in counts:
+        return 16.0      # 1 nominal CMU + mortar
+    if "electrical_box" in counts:
+        return 12.0      # NEC reference height
+
+    for candidate in [4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 36.0]:
+        if ppi > 0 and candidate * ppi >= 100:
+            return candidate
+    return 12.0
+
+
+def build_reference_objects_block(measurements: dict, bar_inches: float) -> str:
+    """
+    Build the visual reference section injected into the VLM prompt.
+    Describes the scale bar and detected objects so Claude can use them as rulers
+    for arbitrary distance questions about anything in the image.
+    """
+    counts = measurements.get("element_counts", {})
+    lines = ["━━━ VISUAL SCALE REFERENCE ━━━"]
+    lines.append(
+        f"A scale bar showing {bar_inches:.0f} inches is drawn in the "
+        f"bottom-left corner of Image 1."
+    )
+
+    known = {k: v for k, v in counts.items() if k in _REFERENCE_DIMS}
+    if known:
+        lines.append("")
+        lines.append("Detected objects with known real-world dimensions (use as visual rulers):")
+        for obj_type, count in known.items():
+            lines.append(
+                f"  - {obj_type.replace('_', ' ').title()} "
+                f"({count} visible): {_REFERENCE_DIMS[obj_type]}"
+            )
+        lines.append("  Important: identify the orientation of each object before using it as")
+        lines.append("  a ruler — a soldier brick (upright) is 2.25\" wide, not 7.625\".")
+
+    lines.append("")
+    lines.append("To estimate any distance in the image:")
+    lines.append("  1. Compare it against the scale bar on Image 1, OR")
+    lines.append("  2. Count how many reference objects span the distance and multiply "
+                 "by the known dimension")
+    lines.append("  Always show your reasoning step "
+                 "(e.g. \"spans ~2.3 brick-widths = 2.3 × 8.0\\\" = 18.4\\\"\")")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Few-shot example — scale-bar distance reasoning
+# ---------------------------------------------------------------------------
+
+FEW_SHOT_QUESTION = (
+    "Looking at this construction image, how far apart are the two vertical wooden beams? "
+    "Use the scale bar in the bottom-left corner to estimate the distance."
+)
+
+FEW_SHOT_ANSWER = """\
+**Distance Estimation — Vertical Wooden Beams**
+
+Scale reference: The scale bar in the bottom-left corner = 8 inches \
+(1 nominal brick + 3/8" mortar joint).
+
+Visual reasoning:
+- I can identify two vertical wooden beams in the image.
+- The gap between the inner faces of the two beams spans approximately \
+1.5× the length of the scale bar.
+
+Calculation: 1.5 × 8.0" = **~12 inches** (edge-to-edge gap between beams)
+
+Note: This is a visual estimate. Actual distance may vary ±1–2" due to \
+perspective and the exact measurement points used.\
+"""
+
+
+def build_few_shot_messages(image_b64: str) -> list[dict]:
+    """
+    Build the few-shot user/assistant turn pair.
+    Returns a two-element list ready to prepend to the Claude messages array.
+    The example teaches the model how to use the scale bar to answer
+    arbitrary distance questions about anything in the image.
+    """
+    return [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": image_b64},
+                },
+                {"type": "text", "text": FEW_SHOT_QUESTION},
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": FEW_SHOT_ANSWER,
+        },
+    ]
+
+
 def build_chat_opening_prompt(
     measurements: dict,
     question: str = "Provide a full inspection report.",
+    bar_inches: float | None = None,
 ) -> str:
     """
     Build the first-turn prompt for a chat session.
-    Includes dimensions, calibrated measurements, and standards as grounding context.
+    Includes scale reference, dimensions, calibrated measurements, and standards.
     """
     mblock = format_measurements_block(measurements)
     cal_summary = build_calibration_summary(measurements)
+    if bar_inches is None:
+        bar_inches = pick_bar_inches(measurements)
+    ref_block = build_reference_objects_block(measurements, bar_inches)
     return ANCHOR_CALIBRATED_PROMPT_TEMPLATE.format(
         question=question,
         dimensions_block=ELEMENT_DIMENSIONS_BLOCK,
         calibration_summary=cal_summary,
         measurements_block=mblock,
         standards_block=STANDARDS_BLOCK,
+        reference_objects_block=ref_block,
     )
 
 

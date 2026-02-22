@@ -184,6 +184,55 @@ def draw_boxes(
     return out
 
 
+def draw_scale_bar(
+    img: np.ndarray,
+    pixels_per_inch: float,
+    bar_inches: float,
+) -> np.ndarray:
+    """
+    Draw a scale bar in the bottom-left corner of the image.
+
+    bar_inches: the real-world length the bar represents (e.g. 8.0 for one brick).
+    Returns a copy of the image with the bar burned in.
+    """
+    if pixels_per_inch <= 0:
+        return img.copy()
+
+    out = img.copy()
+    h, w = out.shape[:2]
+
+    bar_px = int(round(bar_inches * pixels_per_inch))
+    bar_px = max(20, min(bar_px, w - 60))  # clamp to image width
+
+    pad = 20
+    bar_y = h - pad - 14
+    bar_x1 = pad
+    bar_x2 = pad + bar_px
+
+    # White background for readability
+    bg_pad = 8
+    cv2.rectangle(
+        out,
+        (bar_x1 - bg_pad, bar_y - 28),
+        (bar_x2 + bg_pad, bar_y + bg_pad),
+        (255, 255, 255),
+        -1,
+    )
+
+    # Bar line + end ticks
+    cv2.line(out, (bar_x1, bar_y), (bar_x2, bar_y), (0, 0, 0), 3)
+    tick = 8
+    cv2.line(out, (bar_x1, bar_y - tick), (bar_x1, bar_y + tick), (0, 0, 0), 3)
+    cv2.line(out, (bar_x2, bar_y - tick), (bar_x2, bar_y + tick), (0, 0, 0), 3)
+
+    label = f'{bar_inches:.0f} in'
+    cv2.putText(
+        out, label, (bar_x1, bar_y - 12),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA,
+    )
+    return out
+
+
 def draw_measurement_lines(
     img: np.ndarray,
     measurements: list[dict],
