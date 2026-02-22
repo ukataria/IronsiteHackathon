@@ -37,6 +37,13 @@ MODELS = {
         "requires_api": True,
         "env_var": "OPENAI_API_KEY"
     },
+    "gpt-4.1-v": {
+        "category": "closed",
+        "client_class": OpenAIVLMClient,
+        "model_name": "gpt-4-vision-preview",  # Update when GPT-4.1-V released
+        "requires_api": True,
+        "env_var": "OPENAI_API_KEY"
+    },
     "claude-sonnet-4": {
         "category": "closed",
         "client_class": AnthropicVLMClient,
@@ -44,12 +51,73 @@ MODELS = {
         "requires_api": True,
         "env_var": "ANTHROPIC_API_KEY"
     },
-    "gemini-2.0-flash": {
+    "gemini-2.5-pro": {
         "category": "closed",
         "client_class": GeminiVLMClient,
-        "model_name": "gemini-2.0-flash-exp",
+        "model_name": "gemini-2.5-pro",
         "requires_api": True,
         "env_var": "GEMINI_API_KEY"
+    },
+
+    # Open research models
+    "internvl3": {
+        "category": "open-research",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "internvl3",
+        "requires_api": False,
+        "requires_gpu": True
+    },
+    "qwen2.5-vl": {
+        "category": "open-research",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "qwen2.5-vl",
+        "requires_api": False,
+        "requires_gpu": True
+    },
+    "llava-onevision": {
+        "category": "open-research",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "llava-onevision",
+        "requires_api": False,
+        "requires_gpu": True
+    },
+    "pixtral": {
+        "category": "open-research",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "pixtral",
+        "requires_api": False,
+        "requires_gpu": True
+    },
+    "kimi-vl": {
+        "category": "open-research",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "kimi-vl",
+        "requires_api": False,
+        "requires_gpu": True,
+        "optional": True
+    },
+
+    # Edge deployable
+    "qwen-vl-7b": {
+        "category": "edge",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "qwen-vl-7b",
+        "requires_api": False,
+        "requires_gpu": False
+    },
+    "minicpm-v": {
+        "category": "edge",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "minicpm-v",
+        "requires_api": False,
+        "requires_gpu": False
+    },
+    "phi-multimodal": {
+        "category": "edge",
+        "client_class": HuggingFaceVLMClient,
+        "model_name": "phi-multimodal",
+        "requires_api": False,
+        "requires_gpu": False
     },
 
     # Two-Head Architecture (Ours)
@@ -58,7 +126,7 @@ MODELS = {
         "client_class": TwoHeadVLMClient,
         "model_name": "claude-sonnet-4-20250514",
         "requires_api": True,
-        "requires_gpu": True,
+        "requires_gpu": True,  # For Depth Anything V2 Large
         "env_var": "ANTHROPIC_API_KEY",
         "description": "Spatial Anchor Calibration + Claude Sonnet 4"
     }
