@@ -33,11 +33,12 @@ echo "Downloading ${#SCENE_IDS[@]} validation scenes (RGB + depth)..."
 echo "Estimated size: ~500MB-1GB total"
 echo ""
 
-# Create a temporary CSV with just our scene IDs
+# Create a temporary CSV with the required format
+# The download script expects 'video_id' and 'fold' columns
 TEMP_CSV="temp_minimal_scenes.csv"
-echo "video_id" > $TEMP_CSV
+echo "video_id,fold" > $TEMP_CSV
 for scene_id in "${SCENE_IDS[@]}"; do
-    echo "$scene_id" >> $TEMP_CSV
+    echo "$scene_id,Validation" >> $TEMP_CSV
 done
 
 # Download only these specific scenes
