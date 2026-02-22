@@ -1,0 +1,54 @@
+{
+  "image_id": "test-image-2",
+  "n_segments": 2,
+  "segments": [
+    {
+      "id": 0,
+      "type": "door",
+      "label_raw": "opening",
+      "box_pixels": [
+        196.92884826660156,
+        77.14582824707031,
+        510.2817077636719,
+        497.4533996582031
+      ],
+      "confidence": 0.2505074739456177,
+      "pixel_width": 313.3528594970703,
+      "pixel_height": 420.3075714111328,
+      "center_x": 353.6052780151367,
+      "center_y": 287.2996139526367,
+      "real_width_inches": 38.5,
+      "mask_bbox": [
+        218,
+        81,
+        502,
+        496
+      ],
+      "mask_area_px": 23689
+    },
+    {
+      "id": 1,
+      "type": "stud",
+      "label_raw": "vertical wood board",
+      "box_pixels": [
+        814.722900390625,
+        271.5013122558594,
+        1186.38916015625,
+        845.6663818359375
+      ],
+      "confidence": 0.28952348232269287,
+      "pixel_width": 371.666259765625,
+      "pixel_height": 574.1650695800781,
+      "center_x": 1000.5560302734375,
+      "center_y": 558.5838470458984,
+      "real_width_inches": 3.5,
+      "mask_bbox": [
+        815,
+        277,
+        1182,
+        843
+      ],
+      "mask_area_px": 30795
+    }
+  ]
+}
