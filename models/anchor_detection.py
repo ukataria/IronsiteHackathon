@@ -127,7 +127,8 @@ class AnchorDetector:
         """
         Map generic YOLO class to construction anchor type.
 
-        This is a placeholder. In production, use a construction-specific model.
+        Uses known dimensions of common objects for NYU dataset.
+        In production, use a construction-specific model.
 
         Args:
             yolo_class: YOLO class name
@@ -137,18 +138,41 @@ class AnchorDetector:
         Returns:
             Anchor type string or None
         """
-        # Placeholder mapping (very rough)
-        # In production, this would be replaced by a construction-trained model
+        # Map common COCO objects to approximate known dimensions
+        # This enables calibration on indoor scenes (NYU dataset)
 
-        # For demo purposes, we'll assume vertical rectangular objects are studs
+        class_lower = yolo_class.lower()
+
+        # Common indoor objects with reasonably standard dimensions
+        if "door" in class_lower:
+            # Standard interior door is ~30-36 inches wide
+            ANCHOR_DIMENSIONS["door_width"] = 32.0  # inches
+            return "door_width"
+
+        if "refrigerator" in class_lower or "fridge" in class_lower:
+            # Standard fridge width ~30-36 inches
+            ANCHOR_DIMENSIONS["refrigerator_width"] = 33.0
+            return "refrigerator_width"
+
+        if "oven" in class_lower or "stove" in class_lower:
+            # Standard range width 30 inches
+            ANCHOR_DIMENSIONS["oven_width"] = 30.0
+            return "oven_width"
+
+        if "microwave" in class_lower:
+            # Typical microwave ~18-24 inches wide
+            ANCHOR_DIMENSIONS["microwave_width"] = 20.0
+            return "microwave_width"
+
+        # Fall back to aspect ratio heuristics for generic objects
         aspect_ratio = height / width if width > 0 else 0
 
-        if aspect_ratio > 2.0:
-            # Tall vertical object - likely a stud
-            return "2x4_stud_face"
+        if aspect_ratio > 2.0 and width > 20:  # Tall vertical object
+            # Could be a door frame, window, or vertical structure
+            ANCHOR_DIMENSIONS["vertical_element"] = 36.0  # Assume ~3ft wide
+            return "vertical_element"
 
-        # For now, return None for other objects
-        # A production model would recognize: CMU blocks, rebar, electrical boxes, etc.
+        # No reliable anchor found
         return None
 
 
