@@ -21,6 +21,7 @@ Usage:
 """
 
 import argparse
+import random
 import shutil
 import yaml
 from pathlib import Path
@@ -61,7 +62,7 @@ def load_data_yaml(yaml_path):
     return data
 
 
-def merge_datasets(yaml_paths, output_dir):
+def merge_datasets(yaml_paths, output_dir, max_per_split: int | None = None, max_per_dataset: list[int | None] | None = None):
     """
     Merge multiple YOLO datasets into one unified dataset.
 
@@ -118,21 +119,20 @@ def merge_datasets(yaml_paths, output_dir):
         img_out.mkdir(parents=True, exist_ok=True)
         lbl_out.mkdir(parents=True, exist_ok=True)
 
-        total_images = 0
+        # Collect all candidates first so we can sample before copying
+        img_candidates = []
 
         for ds_idx, data in enumerate(datasets):
             base_dir = data["_base_dir"]
             remap = data["_remap"]
             yaml_dir = data["_yaml_path"].parent
 
-            # Resolve the split's image directory
-            # data.yaml uses "val" for validation, but we iterate with "valid"
             img_dir_rel = data.get(split) or data.get("val" if split == "valid" else split)
             if img_dir_rel is None:
                 continue
 
             # Try multiple base directories in case of cross-platform moves
-            candidates = [
+            path_candidates = [
                 Path(base_dir) / img_dir_rel,
                 yaml_dir / img_dir_rel,
                 yaml_dir / split / "images",
@@ -140,7 +140,7 @@ def merge_datasets(yaml_paths, output_dir):
             ]
 
             img_dir = None
-            for c in candidates:
+            for c in path_candidates:
                 if c.exists() and any(c.iterdir()):
                     img_dir = c
                     break
@@ -151,43 +151,54 @@ def merge_datasets(yaml_paths, output_dir):
             # Infer labels dir from images dir
             lbl_dir = Path(str(img_dir).replace("/images", "/labels").replace("\\images", "\\labels"))
             if not lbl_dir.exists():
-                # Try sibling labels dir
                 lbl_dir = img_dir.parent / "labels"
 
-            for img_file in img_dir.iterdir():
-                if img_file.suffix.lower() not in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}:
-                    continue
+            ds_files = [
+                f for f in img_dir.iterdir()
+                if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+            ]
+            ds_max = max_per_dataset[ds_idx] if max_per_dataset and ds_idx < len(max_per_dataset) else None
+            if ds_max and len(ds_files) > ds_max:
+                total_ds = len(ds_files)
+                ds_files = random.sample(ds_files, ds_max)
+                print(f"    ds{ds_idx} {split}: sampled {ds_max} / {total_ds} images")
+            for img_file in ds_files:
+                img_candidates.append((img_file, ds_idx, remap, lbl_dir))
 
-                # Prefix filename with dataset index to avoid collisions
-                new_name = f"ds{ds_idx}_{img_file.name}"
-                shutil.copy2(img_file, img_out / new_name)
+        # Random subset if dataset exceeds max_per_split
+        total_found = len(img_candidates)
+        if total_found == 0:
+            continue
+        if max_per_split and total_found > max_per_split:
+            img_candidates = random.sample(img_candidates, max_per_split)
+            print(f"  {split}: sampled {max_per_split} / {total_found} images")
+        else:
+            print(f"  {split}: {total_found} images merged")
 
-                # Copy and remap label
-                label_file = lbl_dir / (img_file.stem + ".txt")
-                new_label = lbl_out / (f"ds{ds_idx}_{img_file.stem}.txt")
+        # Copy sampled images and remap labels
+        for img_file, ds_idx, remap, lbl_dir in img_candidates:
+            new_name = f"ds{ds_idx}_{img_file.name}"
+            shutil.copy2(img_file, img_out / new_name)
 
-                if label_file.exists():
-                    with open(label_file, "r") as f:
-                        lines = f.readlines()
+            label_file = lbl_dir / (img_file.stem + ".txt")
+            new_label = lbl_out / (f"ds{ds_idx}_{img_file.stem}.txt")
 
-                    remapped_lines = []
-                    for line in lines:
-                        parts = line.strip().split()
-                        if len(parts) >= 5:
-                            old_id = int(parts[0])
-                            new_id = remap.get(old_id, old_id)
-                            remapped_lines.append(f"{new_id} {' '.join(parts[1:])}\n")
+            if label_file.exists():
+                with open(label_file, "r") as f:
+                    lines = f.readlines()
 
-                    with open(new_label, "w") as f:
-                        f.writelines(remapped_lines)
-                else:
-                    # No label = negative image, create empty file
-                    new_label.touch()
+                remapped_lines = []
+                for line in lines:
+                    parts = line.strip().split()
+                    if len(parts) >= 5:
+                        old_id = int(parts[0])
+                        new_id = remap.get(old_id, old_id)
+                        remapped_lines.append(f"{new_id} {' '.join(parts[1:])}\n")
 
-                total_images += 1
-
-        if total_images > 0:
-            print(f"  {split}: {total_images} images merged")
+                with open(new_label, "w") as f:
+                    f.writelines(remapped_lines)
+            else:
+                new_label.touch()
 
     # ── Step 4: Write unified data.yaml ──
     unified_yaml = {
@@ -224,12 +235,16 @@ def main():
     parser.add_argument("--name", type=str, default="finetune", help="Run name (default: finetune)")
     parser.add_argument("--merge-dir", type=str, default="merged_dataset",
                         help="Directory for merged dataset (default: merged_dataset)")
+    parser.add_argument("--max-images", type=int, default=None,
+                        help="Max images per split total. If exceeded, a random subset is used.")
+    parser.add_argument("--max-per-dataset", type=int, nargs="+", default=None,
+                        help="Max images per dataset per split (one value per --data arg, e.g. --max-per-dataset 500 300).")
     args = parser.parse_args()
 
     # ── Resolve dataset ──
-    if len(args.data) > 1:
+    if len(args.data) > 1 or args.max_images or args.max_per_dataset:
         print(f"\nMerging {len(args.data)} datasets...")
-        data_yaml = merge_datasets(args.data, args.merge_dir)
+        data_yaml = merge_datasets(args.data, args.merge_dir, max_per_split=args.max_images, max_per_dataset=args.max_per_dataset)
     else:
         data_yaml = Path(args.data[0]).resolve()
         print(f"\nUsing single dataset: {data_yaml}")

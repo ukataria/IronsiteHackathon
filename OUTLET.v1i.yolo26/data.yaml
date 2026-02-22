@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['OUTLET']
+
+roboflow:
+  workspace: vishals-workspace-cajho
+  project: outlet-4xvv4-ojy9r
+  version: 1
+  license: CC BY 4.0
+  url: https://app.roboflow.com/vishals-workspace-cajho/outlet-4xvv4-ojy9r/1
