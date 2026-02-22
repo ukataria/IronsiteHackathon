@@ -74,7 +74,7 @@ class AnchorDetector:
 
         self.model.to(device)
 
-    def detect(self, image_path: str, confidence_threshold: float = 0.5) -> List[Anchor]:
+    def detect(self, image_path: str, confidence_threshold: float = 0.25) -> List[Anchor]:
         """
         Detect anchor objects in an image.
 
@@ -86,15 +86,21 @@ class AnchorDetector:
             List of detected anchors
         """
         # Run YOLO detection
-        results = self.model(image_path, conf=confidence_threshold, verbose=False)
+        try:
+            results = self.model(image_path, conf=confidence_threshold, verbose=False)
+        except Exception as e:
+            print(f"  ⚠️  YOLO inference failed: {e}")
+            return []
 
         anchors = []
         detected_objects = []  # For debugging
+        total_detections = 0
 
         # For now, we'll use generic YOLO detections and map them to construction anchors
         # In production, this would use a construction-specific model
         for result in results:
             boxes = result.boxes
+            total_detections += len(boxes)
 
             for box in boxes:
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
@@ -126,12 +132,19 @@ class AnchorDetector:
                     anchors.append(anchor)
 
         # Debug output
-        if detected_objects:
-            print(f"  YOLO detected: {', '.join(set(detected_objects))} ({len(detected_objects)} total)")
-            if not anchors:
-                print(f"  ⚠️  No objects mapped to known-dimension anchors")
+        if total_detections > 0:
+            if detected_objects:
+                unique_classes = set(detected_objects)
+                print(f"  YOLO detected: {', '.join(sorted(unique_classes))} ({len(detected_objects)} total)")
+                if not anchors:
+                    print(f"  ⚠️  No objects mapped to known-dimension anchors")
+                else:
+                    anchor_types = [a.class_name for a in anchors]
+                    print(f"  ✓ Found {len(anchors)} anchor(s): {', '.join(set(anchor_types))}")
+            else:
+                print(f"  ⚠️  YOLO found {total_detections} detection(s) but no objects?")
         else:
-            print(f"  ⚠️  YOLO detected no objects in image")
+            print(f"  ⚠️  YOLO detected 0 objects (confidence threshold: {confidence_threshold})")
 
         return anchors
 
