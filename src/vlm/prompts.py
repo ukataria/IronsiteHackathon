@@ -127,11 +127,11 @@ Note: You have relative depth information but no calibrated real-world measureme
 
 ANCHOR_CALIBRATED_PROMPT_TEMPLATE = """You are inspecting a construction site. \
 Two images have been provided:
-  Image 1: Original construction photo (with scale bar in bottom-left corner)
+  Image 1: Original construction photo
   Image 2: Depth map (jet colormap — red/warm = closer to camera, blue/cool = farther away)
 
 Use the depth map to understand spatial layout and which surfaces share the same plane. \
-Use the calibrated measurements and scale bar to answer questions in real-world inches.
+Use the calibrated measurements to answer questions in real-world inches.
 
 Question: {question}
 
@@ -149,8 +149,8 @@ Calibration method: known physical dimensions of detected objects (bricks, CMU, 
 {standards_block}
 
 For pass/fail assessments: use ONLY the pre-computed measured values above. \
-For any other distance question: use the scale bar or reference objects as described above \
-and show your reasoning. Do not guess distances without referencing the scale.
+For any other distance question: use reference objects as described above \
+and show your reasoning. Do not guess distances without referencing a known object.
 
 Provide a structured inspection report:
 1. Per-element pass/fail with exact measurements
@@ -168,44 +168,18 @@ _REFERENCE_DIMS: dict[str, str] = {
 }
 
 
-def pick_bar_inches(measurements: dict) -> float:
-    """
-    Pick a round bar length (inches) for the scale bar overlay.
-    Prefers a length that matches a detected object's nominal size,
-    falls back to the first candidate that gives >= 100px.
-    """
-    counts = measurements.get("element_counts", {})
-    ppi = measurements.get("scale_pixels_per_inch", 0.0)
 
-    if "brick" in counts:
-        return 8.0       # 1 nominal brick + mortar
-    if "cmu" in counts:
-        return 16.0      # 1 nominal CMU + mortar
-    if "electrical_box" in counts:
-        return 12.0      # NEC reference height
-
-    for candidate in [4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 36.0]:
-        if ppi > 0 and candidate * ppi >= 100:
-            return candidate
-    return 12.0
-
-
-def build_reference_objects_block(measurements: dict, bar_inches: float) -> str:
+def build_reference_objects_block(measurements: dict) -> str:
     """
     Build the visual reference section injected into the VLM prompt.
-    Describes the scale bar and detected objects so Claude can use them as rulers
+    Describes detected objects with known dimensions so Claude can use them as rulers
     for arbitrary distance questions about anything in the image.
     """
     counts = measurements.get("element_counts", {})
     lines = ["━━━ VISUAL SCALE REFERENCE ━━━"]
-    lines.append(
-        f"A scale bar showing {bar_inches:.0f} inches is drawn in the "
-        f"bottom-left corner of Image 1."
-    )
 
     known = {k: v for k, v in counts.items() if k in _REFERENCE_DIMS}
     if known:
-        lines.append("")
         lines.append("Detected objects with known real-world dimensions (use as visual rulers):")
         for obj_type, count in known.items():
             lines.append(
@@ -214,73 +188,22 @@ def build_reference_objects_block(measurements: dict, bar_inches: float) -> str:
             )
         lines.append("  Important: identify the orientation of each object before using it as")
         lines.append("  a ruler — a soldier brick (upright) is 2.25\" wide, not 7.625\".")
+    else:
+        lines.append("No objects with known dimensions detected.")
 
     lines.append("")
     lines.append("To estimate any distance in the image:")
-    lines.append("  1. Compare it against the scale bar on Image 1, OR")
-    lines.append("  2. Count how many reference objects span the distance and multiply "
-                 "by the known dimension")
+    lines.append("  Count how many reference objects span the distance and multiply "
+                 "by the known dimension.")
     lines.append("  Always show your reasoning step "
                  "(e.g. \"spans ~2.3 brick-widths = 2.3 × 8.0\\\" = 18.4\\\"\")")
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Few-shot example — scale-bar distance reasoning
-# ---------------------------------------------------------------------------
-
-FEW_SHOT_QUESTION = (
-    "Looking at this construction image, how far apart are the two vertical wooden beams? "
-    "Use the scale bar in the bottom-left corner to estimate the distance."
-)
-
-FEW_SHOT_ANSWER = """\
-**Distance Estimation — Vertical Wooden Beams**
-
-Scale reference: The scale bar in the bottom-left corner = 8 inches \
-(1 nominal brick + 3/8" mortar joint).
-
-Visual reasoning:
-- I can identify two vertical wooden beams in the image.
-- The gap between the inner faces of the two beams spans approximately \
-1.5× the length of the scale bar.
-
-Calculation: 1.5 × 8.0" = **~12 inches** (edge-to-edge gap between beams)
-
-Note: This is a visual estimate. Actual distance may vary ±1–2" due to \
-perspective and the exact measurement points used.\
-"""
-
-
-def build_few_shot_messages(image_b64: str) -> list[dict]:
-    """
-    Build the few-shot user/assistant turn pair.
-    Returns a two-element list ready to prepend to the Claude messages array.
-    The example teaches the model how to use the scale bar to answer
-    arbitrary distance questions about anything in the image.
-    """
-    return [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": "image/png", "data": image_b64},
-                },
-                {"type": "text", "text": FEW_SHOT_QUESTION},
-            ],
-        },
-        {
-            "role": "assistant",
-            "content": FEW_SHOT_ANSWER,
-        },
-    ]
-
 
 def build_chat_opening_prompt(
     measurements: dict,
     question: str = "Provide a full inspection report.",
-    bar_inches: float | None = None,
 ) -> str:
     """
     Build the first-turn prompt for a chat session.
@@ -288,9 +211,7 @@ def build_chat_opening_prompt(
     """
     mblock = format_measurements_block(measurements)
     cal_summary = build_calibration_summary(measurements)
-    if bar_inches is None:
-        bar_inches = pick_bar_inches(measurements)
-    ref_block = build_reference_objects_block(measurements, bar_inches)
+    ref_block = build_reference_objects_block(measurements)
     return ANCHOR_CALIBRATED_PROMPT_TEMPLATE.format(
         question=question,
         dimensions_block=ELEMENT_DIMENSIONS_BLOCK,

@@ -18,7 +18,7 @@ from pathlib import Path
 import cv2
 from ultralytics import YOLO
 
-DEFAULT_MODEL = "../yolo_weights/finetune__3weights/best.pt"
+DEFAULT_MODEL = "../yolo_weights/finetune_5_weights/best.pt"
 DEFAULT_CONF = 0.25
 WINDOW_NAME = "Ghost Blueprint — YOLO Live"
 
@@ -55,6 +55,8 @@ def run_yolo_video(
                 print("End of video.")
                 break
             frame_idx += 1
+            if frame_idx % 10 < 9: 
+                continue 
 
             results = model(frame, conf=conf, verbose=False)
             annotated = results[0].plot()  # BGR numpy array with boxes drawn

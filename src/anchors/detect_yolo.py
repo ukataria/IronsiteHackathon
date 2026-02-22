@@ -27,6 +27,17 @@ DEFAULT_CONF = 0.25
 # Smaller boxes are likely far away and produce noisy scale estimates.
 MIN_ANCHOR_PX = 20
 
+# Maximum aspect ratio (long/short) per type — anything beyond this is
+# almost certainly a multi-object cluster, not a single calibration anchor.
+# Brick stretcher face: 7.625/2.25 ≈ 3.39 → cap at 4.0
+# CMU front face:      15.625/7.625 ≈ 2.05 → cap at 2.5
+# Outlet face:          3.0/2.0     = 1.5  → cap at 2.5
+MAX_ASPECT_BY_TYPE: dict[str, float] = {
+    "brick": 4.0,
+    "cmu": 2.5,
+    "electrical_box": 2.5,
+}
+
 
 def _infer_face(
     anchor_type: str,
@@ -176,13 +187,25 @@ def detect_anchors_yolo(
 
             orientation, pixel_measure, real_measure = _infer_face(anchor_type, px_w, px_h)
 
-            # Boxes smaller than MIN_ANCHOR_PX are too far away for reliable calibration.
-            # Set pixel_width=0 so calibrate.py skips them (it filters s > 0).
-            too_small = max(px_w, px_h) < MIN_ANCHOR_PX
+            # Disqualify from calibration if too small (far away) or aspect ratio
+            # exceeds the per-type cap (likely a multi-object cluster, not one anchor).
+            px_long = max(px_w, px_h)
+            px_short = min(px_w, px_h)
+            aspect = px_long / max(px_short, 1.0)
+            max_aspect = MAX_ASPECT_BY_TYPE.get(anchor_type, 4.0)
+
+            too_small = px_long < MIN_ANCHOR_PX
+            too_elongated = aspect > max_aspect
+
             if too_small:
                 logger.debug(
                     f"  Anchor {i} ({anchor_type}) too small for calibration "
-                    f"({max(px_w, px_h):.1f}px < {MIN_ANCHOR_PX}px)"
+                    f"({px_long:.1f}px < {MIN_ANCHOR_PX}px)"
+                )
+            if too_elongated:
+                logger.debug(
+                    f"  Anchor {i} ({anchor_type}) aspect={aspect:.2f} exceeds "
+                    f"max {max_aspect} — likely multi-object cluster, skipping calibration"
                 )
 
             anchors.append({
@@ -191,7 +214,7 @@ def detect_anchors_yolo(
                 "label_raw": raw_label,
                 "box_pixels": [x1, y1, x2, y2],
                 "confidence": confidence,
-                "pixel_width": 0.0 if too_small else pixel_measure,
+                "pixel_width": 0.0 if (too_small or too_elongated) else pixel_measure,
                 "pixel_width_raw": px_w,
                 "pixel_height": px_h,
                 "center_x": (x1 + x2) / 2,
