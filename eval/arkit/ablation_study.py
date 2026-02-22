@@ -97,10 +97,20 @@ class VLMOnlyCondition(AblationCondition):
 class VLMPlusDepthCondition(AblationCondition):
     """Condition 2: VLM + Depth information"""
 
-    def __init__(self, vlm_model="claude-sonnet-4-20250514", device="cuda"):
+    def __init__(
+        self,
+        vlm_model="claude-sonnet-4-20250514",
+        device="cuda",
+        depth_model_type="depth_anything_v2",
+        depth_model_size="large"
+    ):
         super().__init__(vlm_model, device)
-        self.depth_estimator = DepthEstimator(model_size="large", device=device)
-        print("  Condition 2: VLM + Depth")
+        self.depth_estimator = DepthEstimator(
+            model_type=depth_model_type,
+            model_size=depth_model_size,
+            device=device
+        )
+        print(f"  Condition 2: VLM + Depth ({depth_model_type}/{depth_model_size})")
 
     def query_distance(self, image_path, point1, point2, prompt, **kwargs):
         """Augment prompt with depth values at the two points."""
@@ -228,11 +238,21 @@ class VLMPlusAnchorsCondition(AblationCondition):
 class FullSpatialAnchorCondition(AblationCondition):
     """Condition 4: Full Spatial Anchor Calibration (depth + anchors)"""
 
-    def __init__(self, vlm_model="claude-sonnet-4-20250514", device="cuda"):
+    def __init__(
+        self,
+        vlm_model="claude-sonnet-4-20250514",
+        device="cuda",
+        depth_model_type="depth_anything_v2",
+        depth_model_size="large"
+    ):
         super().__init__(vlm_model, device)
         self.anchor_detector = AnchorDetector(device=device)
-        self.depth_estimator = DepthEstimator(model_size="large", device=device)
-        print("  Condition 4: Full Spatial Anchor Calibration")
+        self.depth_estimator = DepthEstimator(
+            model_type=depth_model_type,
+            model_size=depth_model_size,
+            device=device
+        )
+        print(f"  Condition 4: Full Spatial Anchor ({depth_model_type}/{depth_model_size})")
 
     def query_distance(self, image_path, point1, point2, prompt, **kwargs):
         """Full spatial anchor calibration with depth and anchors."""
@@ -403,7 +423,15 @@ def extract_distance_from_response(response_text):
     return None
 
 
-def run_ablation_study(data_dir, num_images, pairs_per_image, output_dir, device):
+def run_ablation_study(
+    data_dir,
+    num_images,
+    pairs_per_image,
+    output_dir,
+    device,
+    depth_model_type="depth_anything_v2",
+    depth_model_size="large"
+):
     """Run ablation study across all conditions."""
 
     output_dir = Path(output_dir)
@@ -415,15 +443,24 @@ def run_ablation_study(data_dir, num_images, pairs_per_image, output_dir, device
     print(f"Data directory: {data_dir}")
     print(f"Test size: {num_images} images × {pairs_per_image} pairs")
     print(f"Device: {device}")
+    print(f"Depth model: {depth_model_type}/{depth_model_size}")
     print("="*60)
     print()
 
     # Initialize conditions
     conditions = {
         "vlm_only": VLMOnlyCondition(device=device),
-        "vlm_plus_depth": VLMPlusDepthCondition(device=device),
+        "vlm_plus_depth": VLMPlusDepthCondition(
+            device=device,
+            depth_model_type=depth_model_type,
+            depth_model_size=depth_model_size
+        ),
         "vlm_plus_anchors": VLMPlusAnchorsCondition(device=device),
-        "full_spatial_anchor": FullSpatialAnchorCondition(device=device)
+        "full_spatial_anchor": FullSpatialAnchorCondition(
+            device=device,
+            depth_model_type=depth_model_type,
+            depth_model_size=depth_model_size
+        )
     }
 
     # Load data
@@ -690,6 +727,11 @@ def main():
                        help="Output directory for results")
     parser.add_argument("--device", type=str, default="cuda", choices=["cuda", "cpu"],
                        help="Device for depth estimation")
+    parser.add_argument("--depth_model_type", type=str, default="depth_anything_v2",
+                       choices=["depth_anything_v2", "zoe", "midas"],
+                       help="Depth estimation model type")
+    parser.add_argument("--depth_model_size", type=str, default="large",
+                       help="Depth model size (depth_anything_v2: small/base/large, zoe: nk/n/k, midas: small/hybrid/large)")
 
     args = parser.parse_args()
     load_dotenv()
@@ -699,7 +741,9 @@ def main():
         args.num_images,
         args.pairs_per_image,
         args.output_dir,
-        args.device
+        args.device,
+        args.depth_model_type,
+        args.depth_model_size
     )
 
 
