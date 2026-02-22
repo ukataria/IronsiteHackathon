@@ -23,16 +23,21 @@ logger = setup_logger("measurement")
 # ---------------------------------------------------------------------------
 
 TOLERANCES: dict[str, float] = {
-    "stud_spacing_oc": 0.5,        # 16" OC ± 0.5"
-    "rebar_spacing": 0.75,         # 12" OC ± 0.75"
-    "electrical_box_height": 1.0,  # 12" to center ± 1"
-    "cmu_spacing": 0.5,
+    "stud_spacing_oc": 0.5,         # 16" OC ± 0.5"
+    "rebar_spacing": 0.75,          # 12" OC ± 0.75"
+    "electrical_box_height": 1.0,   # 12" to center ± 1"
+    "cmu_spacing": 0.5,             # 16" OC ± 0.5"
+    "brick_h_spacing": 0.25,        # 8.0" OC ± 0.25" (brick + 3/8" mortar)
+    "brick_v_spacing": 0.25,        # 2.625" course height ± 0.25"
 }
 
 TARGET_VALUES: dict[str, float] = {
     "stud_spacing_oc": 16.0,
     "rebar_spacing": 12.0,
     "electrical_box_height": 12.0,
+    "cmu_spacing": 16.0,            # 15.625" CMU + 3/8" mortar joint
+    "brick_h_spacing": 8.0,         # 7.625" brick + 3/8" mortar joint
+    "brick_v_spacing": 2.625,       # 2.25" brick + 3/8" mortar joint
 }
 
 
@@ -85,17 +90,11 @@ def measure_element_spacing(
     return spacings
 
 
-def _check_compliance(
-    inches: float,
-    element_type: str,
-) -> bool:
-    """Return True if measurement is within tolerance for its standard value."""
-    spacing_key = f"{element_type}_spacing_oc"
-    if spacing_key not in TARGET_VALUES:
-        return True  # unknown type — assume compliant
-    target = TARGET_VALUES[spacing_key]
-    tol = TOLERANCES.get(spacing_key, 0.5)
-    return abs(inches - target) <= tol
+def _check_compliance(inches: float, key: str) -> bool:
+    """Return True if measurement is within tolerance for the given target key."""
+    if key not in TARGET_VALUES:
+        return True  # unknown — assume compliant
+    return abs(inches - TARGET_VALUES[key]) <= TOLERANCES.get(key, 0.5)
 
 
 def measure_height_from_reference(
@@ -113,6 +112,27 @@ def measure_height_from_reference(
     center_y = element.get("center_y", reference_y_pixels)
     delta_px = reference_y_pixels - center_y  # positive = above reference
     return round(delta_px / pixels_per_inch, 2)
+
+
+def cluster_by_axis(
+    elements: list[dict],
+    axis_key: str,
+    tolerance_px: float,
+) -> list[list[dict]]:
+    """
+    Group elements whose axis_key values are within tolerance_px of each other.
+    Returns list of clusters (each cluster is a list of element dicts).
+    """
+    if not elements:
+        return []
+    sorted_els = sorted(elements, key=lambda e: e.get(axis_key, 0))
+    clusters: list[list[dict]] = [[sorted_els[0]]]
+    for el in sorted_els[1:]:
+        if abs(el.get(axis_key, 0) - clusters[-1][-1].get(axis_key, 0)) <= tolerance_px:
+            clusters[-1].append(el)
+        else:
+            clusters.append([el])
+    return clusters
 
 
 def measure_gap(
@@ -190,56 +210,83 @@ def extract_measurements(
     # --- Stud spacings ---
     studs = by_type.get("stud", [])
     stud_spacings_raw = measure_element_spacing(studs, pixels_per_inch, axis="horizontal")
-    stud_spacings = []
-    for s in stud_spacings_raw:
-        compliant = _check_compliance(s["inches"], "stud")
-        stud_spacings.append({**s, "compliant": compliant})
+    stud_spacings = [
+        {**s, "compliant": _check_compliance(s["inches"], "stud_spacing_oc")}
+        for s in stud_spacings_raw
+    ]
 
     # --- Rebar spacings ---
     rebars = by_type.get("rebar", [])
     rebar_spacings_raw = measure_element_spacing(rebars, pixels_per_inch, axis="horizontal")
-    rebar_spacings = []
-    for s in rebar_spacings_raw:
-        compliant = _check_compliance(s["inches"], "rebar")
-        rebar_spacings.append({**s, "compliant": compliant})
+    rebar_spacings = [
+        {**s, "compliant": _check_compliance(s["inches"], "rebar_spacing")}
+        for s in rebar_spacings_raw
+    ]
 
     # --- Electrical box heights ---
     boxes = by_type.get("electrical_box", [])
-    reference_y = float(image_height)  # bottom of image as floor proxy
+    reference_y = float(image_height)
     elec_heights = []
     for i, box in enumerate(boxes):
         height_in = measure_height_from_reference(box, reference_y, pixels_per_inch)
-        target = TARGET_VALUES.get("electrical_box_height", 12.0)
-        tol = TOLERANCES.get("electrical_box_height", 1.0)
-        compliant = abs(height_in - target) <= tol
         elec_heights.append({
             "box_id": i,
             "anchor_id": box.get("id"),
             "height_inches": height_in,
-            "compliant": compliant,
+            "compliant": _check_compliance(height_in, "electrical_box_height"),
         })
+
+    # --- Brick spacings ---
+    # Group bricks into rows (by center_y) then measure horizontal spacing within each row.
+    # Vertical spacing is measured between row midpoints.
+    bricks = by_type.get("brick", [])
+    brick_h_spacings: list[dict] = []
+    brick_v_spacings: list[dict] = []
+    if bricks and pixels_per_inch > 0:
+        median_brick_h = float(np.median([b.get("pixel_height", 20) for b in bricks]))
+        row_tol = max(median_brick_h * 0.6, 8.0)
+        rows = cluster_by_axis(bricks, "center_y", row_tol)
+        for row in rows:
+            for s in measure_element_spacing(row, pixels_per_inch, axis="horizontal"):
+                brick_h_spacings.append({**s, "compliant": _check_compliance(s["inches"], "brick_h_spacing")})
+        # Vertical: one representative point per row (mean center_y)
+        row_reps = [
+            {"center_y": float(np.mean([e["center_y"] for e in row])), "center_x": 0.0, "id": i}
+            for i, row in enumerate(rows)
+        ]
+        for s in measure_element_spacing(row_reps, pixels_per_inch, axis="vertical"):
+            brick_v_spacings.append({**s, "compliant": _check_compliance(s["inches"], "brick_v_spacing")})
+
+    # --- CMU spacings ---
+    cmus = by_type.get("cmu", [])
+    cmu_spacings = [
+        {**s, "compliant": _check_compliance(s["inches"], "cmu_spacing")}
+        for s in measure_element_spacing(cmus, pixels_per_inch, axis="horizontal")
+    ]
 
     # --- Summary string ---
     summary_parts = []
-    if stud_spacings:
-        n_fail = sum(1 for s in stud_spacings if not s["compliant"])
+
+    def _summarize(spacings: list[dict], label: str, target_desc: str) -> None:
+        if not spacings:
+            return
+        n_fail = sum(1 for s in spacings if not s["compliant"])
         summary_parts.append(
-            f"{len(stud_spacings) - n_fail}/{len(stud_spacings)} stud spacings compliant."
+            f"{len(spacings) - n_fail}/{len(spacings)} {label} compliant "
+            f"(expected {target_desc})."
         )
-        for s in stud_spacings:
-            if not s["compliant"]:
-                summary_parts.append(
-                    f"  Non-compliant bay: {s['inches']:.1f}\" (expected 16.0\" OC ±0.5\")."
-                )
-    if rebar_spacings:
-        n_fail = sum(1 for s in rebar_spacings if not s["compliant"])
-        summary_parts.append(
-            f"{len(rebar_spacings) - n_fail}/{len(rebar_spacings)} rebar spacings compliant."
-        )
+
+    _summarize(stud_spacings, "stud spacings", "16.0\" OC ±0.5\"")
+    _summarize(rebar_spacings, "rebar spacings", "12.0\" OC ±0.75\"")
+    _summarize(brick_h_spacings, "brick horizontal spacings", "8.0\" OC ±0.25\"")
+    _summarize(brick_v_spacings, "brick course heights", "2.625\" ±0.25\"")
+    _summarize(cmu_spacings, "CMU spacings", "16.0\" OC ±0.5\"")
+
     if elec_heights:
         n_fail = sum(1 for h in elec_heights if not h["compliant"])
         summary_parts.append(
-            f"{len(elec_heights) - n_fail}/{len(elec_heights)} electrical box heights compliant."
+            f"{len(elec_heights) - n_fail}/{len(elec_heights)} electrical box heights compliant "
+            f"(expected 12.0\" ±1\")."
         )
 
     result = {
@@ -249,6 +296,9 @@ def extract_measurements(
         "stud_spacings": stud_spacings,
         "rebar_spacings": rebar_spacings,
         "electrical_box_heights": elec_heights,
+        "brick_h_spacings": brick_h_spacings,
+        "brick_v_spacings": brick_v_spacings,
+        "cmu_spacings": cmu_spacings,
         "element_counts": {k: len(v) for k, v in by_type.items()},
         "summary": " ".join(summary_parts) if summary_parts else "No measurements extracted.",
     }
