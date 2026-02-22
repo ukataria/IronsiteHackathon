@@ -19,17 +19,29 @@ class TogetherVLMClient:
         Args:
             model: Model name (e.g., "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo")
         """
+        self.model = model
+        self.client = None
+        self.error_msg = None
+
         try:
             import together
         except ImportError:
-            raise ImportError("together package not installed. Run: pip install together")
+            self.error_msg = "together package not installed. Run: pip install together"
+            print(f"⚠️  {self.error_msg}")
+            return
 
         api_key = os.getenv("TOGETHER_API_KEY")
         if not api_key:
-            raise ValueError("TOGETHER_API_KEY environment variable not set")
+            self.error_msg = "TOGETHER_API_KEY environment variable not set"
+            print(f"⚠️  {self.error_msg}")
+            return
 
-        self.client = together.Together(api_key=api_key)
-        self.model = model
+        try:
+            self.client = together.Together(api_key=api_key)
+            print(f"✓ Together AI client initialized with {model}")
+        except Exception as e:
+            self.error_msg = f"Failed to initialize Together client: {e}"
+            print(f"⚠️  {self.error_msg}")
 
     def query_distance(
         self,
@@ -50,6 +62,14 @@ class TogetherVLMClient:
         Returns:
             Dict with predicted_distance, raw_response, model
         """
+        # Check if client is initialized
+        if self.client is None:
+            return {
+                "predicted_distance": None,
+                "raw_response": f"Client not initialized: {self.error_msg}",
+                "model": self.model
+            }
+
         # Encode image
         with open(image_path, "rb") as f:
             image_b64 = base64.b64encode(f.read()).decode("utf-8")

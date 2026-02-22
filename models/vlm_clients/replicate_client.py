@@ -19,17 +19,29 @@ class ReplicateVLMClient:
         Args:
             model: Model identifier (e.g., "meta/meta-llama-3.2-90b-vision-instruct")
         """
+        self.model = model
+        self.client = None
+        self.error_msg = None
+
         try:
             import replicate
         except ImportError:
-            raise ImportError("replicate package not installed. Run: pip install replicate")
+            self.error_msg = "replicate package not installed. Run: pip install replicate"
+            print(f"⚠️  {self.error_msg}")
+            return
 
         api_key = os.getenv("REPLICATE_API_TOKEN")
         if not api_key:
-            raise ValueError("REPLICATE_API_TOKEN environment variable not set")
+            self.error_msg = "REPLICATE_API_TOKEN environment variable not set"
+            print(f"⚠️  {self.error_msg}")
+            return
 
-        self.client = replicate.Client(api_token=api_key)
-        self.model = model
+        try:
+            self.client = replicate.Client(api_token=api_key)
+            print(f"✓ Replicate client initialized with {model}")
+        except Exception as e:
+            self.error_msg = f"Failed to initialize Replicate client: {e}"
+            print(f"⚠️  {self.error_msg}")
 
     def query_distance(
         self,
@@ -50,6 +62,14 @@ class ReplicateVLMClient:
         Returns:
             Dict with predicted_distance, raw_response, model
         """
+        # Check if client is initialized
+        if self.client is None:
+            return {
+                "predicted_distance": None,
+                "raw_response": f"Client not initialized: {self.error_msg}",
+                "model": self.model
+            }
+
         # Encode image as data URI
         with open(image_path, "rb") as f:
             image_b64 = base64.b64encode(f.read()).decode("utf-8")
