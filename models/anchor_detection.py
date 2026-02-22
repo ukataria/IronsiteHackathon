@@ -190,15 +190,74 @@ class AnchorDetector:
             return "microwave_width"
 
         if "tv" in class_lower or "monitor" in class_lower:
-            # Use width as the known dimension
-            # Common TV sizes: 32", 43", 55", 65"
-            # Use aspect ratio to estimate - assume 16:9
-            # For simplicity, estimate based on detection size
-            if width > height:  # Landscape orientation
-                # Estimate TV size based on pixel width
-                # This is approximate for testing
-                ANCHOR_DIMENSIONS["tv_width"] = 43.0  # inches (assume ~43" TV)
-                return "tv_width"
+            # Common TV/monitor width
+            ANCHOR_DIMENSIONS["tv_width"] = 43.0  # inches (typical TV)
+            return "tv_width"
+
+        if "chair" in class_lower:
+            # Standard dining chair width ~16-18 inches
+            ANCHOR_DIMENSIONS["chair_width"] = 17.0
+            return "chair_width"
+
+        if "couch" in class_lower or "sofa" in class_lower:
+            # Standard 3-seater sofa ~84 inches
+            ANCHOR_DIMENSIONS["couch_width"] = 84.0
+            return "couch_width"
+
+        if "bed" in class_lower:
+            # Queen bed width ~60 inches
+            ANCHOR_DIMENSIONS["bed_width"] = 60.0
+            return "bed_width"
+
+        if "table" in class_lower or "desk" in class_lower:
+            # Typical desk/dining table ~36-48 inches wide
+            ANCHOR_DIMENSIONS["table_width"] = 42.0
+            return "table_width"
+
+        if "sink" in class_lower:
+            # Standard kitchen sink ~22-33 inches
+            ANCHOR_DIMENSIONS["sink_width"] = 27.0
+            return "sink_width"
+
+        if "toilet" in class_lower:
+            # Standard toilet width ~14-16 inches
+            ANCHOR_DIMENSIONS["toilet_width"] = 15.0
+            return "toilet_width"
+
+        if "bathtub" in class_lower:
+            # Standard bathtub width ~30 inches
+            ANCHOR_DIMENSIONS["bathtub_width"] = 30.0
+            return "bathtub_width"
+
+        if "cabinet" in class_lower:
+            # Kitchen cabinet width varies, use standard base
+            ANCHOR_DIMENSIONS["cabinet_width"] = 30.0
+            return "cabinet_width"
+
+        if "window" in class_lower:
+            # Standard window ~36 inches wide
+            ANCHOR_DIMENSIONS["window_width"] = 36.0
+            return "window_width"
+
+        if "book" in class_lower:
+            # Standard hardcover book height ~9 inches
+            ANCHOR_DIMENSIONS["book_height"] = 9.0
+            return "book_height"
+
+        if "laptop" in class_lower:
+            # Typical laptop screen ~13-15 inches diagonal
+            ANCHOR_DIMENSIONS["laptop_width"] = 13.0
+            return "laptop_width"
+
+        if "bottle" in class_lower:
+            # Standard water bottle height ~8-10 inches
+            ANCHOR_DIMENSIONS["bottle_height"] = 9.0
+            return "bottle_height"
+
+        if "cup" in class_lower or "mug" in class_lower:
+            # Standard coffee mug ~3-4 inches diameter
+            ANCHOR_DIMENSIONS["cup_width"] = 3.5
+            return "cup_width"
 
         # Fall back to aspect ratio heuristics for generic objects
         aspect_ratio = height / width if width > 0 else 0
