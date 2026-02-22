@@ -4,6 +4,10 @@
 # Secrets
 .env
 
+# Data directories (large files)
+data/
+*.npy
+
 # Evaluation outputs
 outputs/
 *.pyc

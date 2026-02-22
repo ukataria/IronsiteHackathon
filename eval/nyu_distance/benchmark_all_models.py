@@ -434,18 +434,22 @@ def main():
                 marked_path = out_dir / "marked_images" / f"{model_name}_img{img_idx:04d}_pair{pair_idx}.jpg"
                 create_marked_image(rgb_path, point1, point2, str(marked_path))
 
+                # Print what we're asking
+                current_query = img_idx * args.pairs_per_image + pair_idx + 1
+                print(f"\n  [{current_query}/{total_queries}] Image {img_idx}, Pair {pair_idx}")
+                print(f"  Question: \"What is the 3D Euclidean distance in meters between")
+                print(f"            point A (red cross at pixel {point1}) and")
+                print(f"            point B (blue cross at pixel {point2})?\"")
+                print(f"  Ground Truth: {gt_distance:.2f}m")
+
                 # Query model
                 result = query_vlm_distance(client, str(marked_path), point1, point2)
 
                 if result["predicted_distance"] is not None:
                     successful_queries += 1
-
-                # Print progress
-                current_query = img_idx * args.pairs_per_image + pair_idx + 1
-                print(f"  [{current_query}/{total_queries}] Image {img_idx}, Pair {pair_idx}: "
-                      f"GT={gt_distance:.2f}m, Pred={result['predicted_distance']:.2f}m"
-                      if result["predicted_distance"] is not None
-                      else f"  [{current_query}/{total_queries}] Image {img_idx}, Pair {pair_idx}: Failed")
+                    print(f"  Predicted: {result['predicted_distance']:.2f}m | Error: {abs(result['predicted_distance'] - gt_distance):.2f}m")
+                else:
+                    print(f"  Predicted: FAILED - {result.get('raw_response', 'Unknown error')}")
 
                 result.update({
                     "image_idx": img_idx,
