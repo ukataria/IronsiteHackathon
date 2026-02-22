@@ -517,7 +517,7 @@ class GroundingDINOTrainer:
         outputs = self.model(**inputs)
         if step_idx == 0:
             print(
-                f"  [debug] pred_logits: {outputs.logits.shape}  pred_boxes: {outputs.pred_boxes.shape}"
+                f"  [debug] pred_logits: {outputs.pred_logits.shape}  pred_boxes: {outputs.pred_boxes.shape}"
             )
         return {
             "pred_logits": outputs.logits,        # (bs, nq, text_len)
