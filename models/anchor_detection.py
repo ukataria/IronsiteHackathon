@@ -190,8 +190,9 @@ class AnchorDetector:
             return "microwave_width"
 
         if "tv" in class_lower or "monitor" in class_lower:
-            # Common TV/monitor width
-            ANCHOR_DIMENSIONS["tv_width"] = 43.0  # inches (typical TV)
+            # Common TV/monitor width - updated for better calibration
+            # 50-55" TVs are now most common (diagonal), width ~48-50"
+            ANCHOR_DIMENSIONS["tv_width"] = 50.0  # inches (typical modern TV)
             return "tv_width"
 
         if "chair" in class_lower:
@@ -263,14 +264,14 @@ class AnchorDetector:
         aspect_ratio = height / width if width > 0 else 0
 
         if "person" in class_lower:
-            # Use for scale - average adult height ~66 inches (5'6")
-            # But use shoulder width as more reliable anchor ~18 inches
+            # Use for scale - average adult height ~66-69 inches
+            # Shoulder width varies 16-20" depending on gender/build
             if aspect_ratio > 1.5:  # Standing person
-                ANCHOR_DIMENSIONS["person_height"] = 66.0
+                ANCHOR_DIMENSIONS["person_height"] = 68.0  # inches (avg adult ~5'8")
                 return "person_height"
-            else:  # Sitting or partial
-                ANCHOR_DIMENSIONS["person_torso"] = 18.0
-                return "person_torso"
+            else:  # Sitting or partial - use width instead
+                ANCHOR_DIMENSIONS["person_width"] = 20.0  # inches (shoulder width)
+                return "person_width"
 
         if "clock" in class_lower:
             # Wall clock diameter ~10-12 inches
