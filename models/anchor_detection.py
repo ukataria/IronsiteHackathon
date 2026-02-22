@@ -199,8 +199,8 @@ class AnchorDetector:
 
         if "tv" in class_lower or "monitor" in class_lower:
             # Common TV/monitor width (diagonal to width conversion)
-            # 43-50" diagonal TVs are ~37-43" wide
-            ANCHOR_DIMENSIONS["tv_width"] = 40.0  # inches (typical TV width)
+            # 55-65" diagonal TVs are ~48-57" wide (modern standard)
+            ANCHOR_DIMENSIONS["tv_width"] = 52.0  # inches (typical modern TV width)
             return "tv_width"
 
         if "chair" in class_lower:
