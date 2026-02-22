@@ -37,10 +37,17 @@ MODELS = {
         "requires_api": True,
         "env_var": "OPENAI_API_KEY"
     },
-    "gpt-4.1-v": {
+    "gpt-4o-mini": {
         "category": "closed",
         "client_class": OpenAIVLMClient,
-        "model_name": "gpt-4-vision-preview",  # Update when GPT-4.1-V released
+        "model_name": "gpt-4o-mini",
+        "requires_api": True,
+        "env_var": "OPENAI_API_KEY"
+    },
+    "gpt-4-turbo": {
+        "category": "closed",
+        "client_class": OpenAIVLMClient,
+        "model_name": "gpt-4-turbo",
         "requires_api": True,
         "env_var": "OPENAI_API_KEY"
     },
@@ -51,10 +58,38 @@ MODELS = {
         "requires_api": True,
         "env_var": "ANTHROPIC_API_KEY"
     },
+    "claude-opus-4": {
+        "category": "closed",
+        "client_class": AnthropicVLMClient,
+        "model_name": "claude-opus-4-20250514",
+        "requires_api": True,
+        "env_var": "ANTHROPIC_API_KEY"
+    },
+    "claude-3.5-sonnet": {
+        "category": "closed",
+        "client_class": AnthropicVLMClient,
+        "model_name": "claude-3-5-sonnet-20241022",
+        "requires_api": True,
+        "env_var": "ANTHROPIC_API_KEY"
+    },
     "gemini-2.5-pro": {
         "category": "closed",
         "client_class": GeminiVLMClient,
         "model_name": "gemini-2.5-pro",
+        "requires_api": True,
+        "env_var": "GEMINI_API_KEY"
+    },
+    "gemini-2.0-flash": {
+        "category": "closed",
+        "client_class": GeminiVLMClient,
+        "model_name": "gemini-2.0-flash-exp",
+        "requires_api": True,
+        "env_var": "GEMINI_API_KEY"
+    },
+    "gemini-1.5-pro": {
+        "category": "closed",
+        "client_class": GeminiVLMClient,
+        "model_name": "gemini-1.5-pro",
         "requires_api": True,
         "env_var": "GEMINI_API_KEY"
     },
