@@ -192,7 +192,9 @@ def merge_datasets(yaml_paths, output_dir, max_per_split: int | None = None, max
                     parts = line.strip().split()
                     if len(parts) >= 5:
                         old_id = int(parts[0])
-                        new_id = remap.get(old_id, old_id)
+                        if old_id not in remap:
+                            continue  # class ID not in dataset's names — skip
+                        new_id = remap[old_id]
                         remapped_lines.append(f"{new_id} {' '.join(parts[1:])}\n")
 
                 with open(new_label, "w") as f:
