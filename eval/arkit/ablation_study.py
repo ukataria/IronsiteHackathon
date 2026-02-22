@@ -501,10 +501,24 @@ Please provide your answer as a single numerical value in meters."""
 
         print(f"\n✓ {cond_name.upper().replace('_', ' ')} COMPLETE")
 
-    # Save results
+    # Save results (convert numpy types to native Python types)
+    def convert_to_serializable(obj):
+        """Convert numpy types to native Python types for JSON serialization."""
+        if isinstance(obj, dict):
+            return {k: convert_to_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_serializable(item) for item in obj]
+        elif isinstance(obj, (np.integer, np.floating)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, tuple):
+            return list(obj)
+        return obj
+
     results_path = output_dir / "ablation_results.json"
     with open(results_path, 'w') as f:
-        json.dump(all_results, f, indent=2)
+        json.dump(convert_to_serializable(all_results), f, indent=2)
 
     print(f"\n✓ Results saved to: {results_path}")
 
@@ -663,9 +677,9 @@ def main():
     )
     parser.add_argument("--data_dir", type=str, required=True,
                        help="Path to ARKit data directory")
-    parser.add_argument("--num_images", type=int, default=10,
+    parser.add_argument("--num_images", type=int, default=5,
                        help="Number of images to test")
-    parser.add_argument("--pairs_per_image", type=int, default=3,
+    parser.add_argument("--pairs_per_image", type=int, default=2,
                        help="Number of point pairs per image")
     parser.add_argument("--output_dir", type=str, default="outputs/ablation_study",
                        help="Output directory for results")
