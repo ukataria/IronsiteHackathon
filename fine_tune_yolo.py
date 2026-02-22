@@ -62,7 +62,7 @@ def load_data_yaml(yaml_path):
     return data
 
 
-def merge_datasets(yaml_paths, output_dir, max_per_split: int | None = None, max_per_dataset: list[int | None] | None = None):
+def merge_datasets(yaml_paths, output_dir, max_per_split: int | None = None, max_per_dataset: list[int | None] | None = None, class_rename: dict[str, str] | None = None):
     """
     Merge multiple YOLO datasets into one unified dataset.
 
@@ -93,6 +93,9 @@ def merge_datasets(yaml_paths, output_dir, max_per_split: int | None = None, max
             sorted_names = [str(names[k]) for k in sorted(names.keys())]
         else:
             sorted_names = [str(n) for n in names]
+
+        if class_rename:
+            sorted_names = [class_rename.get(n, n) for n in sorted_names]
 
         print(f"\n  {yaml_name} classes: {sorted_names}")
 
@@ -244,12 +247,25 @@ def main():
                         help="Max images per split total. If exceeded, a random subset is used.")
     parser.add_argument("--max-per-dataset", type=int, nargs="+", default=None,
                         help="Max images per dataset per split (one value per --data arg, e.g. --max-per-dataset 500 300).")
+    parser.add_argument("--rename-class", nargs="+", default=None, metavar="OLD=NEW",
+                        help="Rename/merge class names before unifying (e.g. --rename-class 'Bricks-Masonry=brick' '1=block').")
     args = parser.parse_args()
 
+    # ── Parse class renames ──
+    class_rename = None
+    if args.rename_class:
+        class_rename = {}
+        for pair in args.rename_class:
+            if "=" not in pair:
+                parser.error(f"--rename-class entries must be OLD=NEW, got: {pair!r}")
+            old, new = pair.split("=", 1)
+            class_rename[old.strip()] = new.strip()
+        print(f"\nClass renames: {class_rename}")
+
     # ── Resolve dataset ──
-    if len(args.data) > 1 or args.max_images or args.max_per_dataset:
+    if len(args.data) > 1 or args.max_images or args.max_per_dataset or class_rename:
         print(f"\nMerging {len(args.data)} datasets...")
-        data_yaml = merge_datasets(args.data, args.merge_dir, max_per_split=args.max_images, max_per_dataset=args.max_per_dataset)
+        data_yaml = merge_datasets(args.data, args.merge_dir, max_per_split=args.max_images, max_per_dataset=args.max_per_dataset, class_rename=class_rename)
     else:
         data_yaml = Path(args.data[0]).resolve()
         print(f"\nUsing single dataset: {data_yaml}")
