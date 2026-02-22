@@ -30,13 +30,6 @@ DeepAnchor addresses this directly, enabling pass/fail inspection decisions grou
 
 Construction environments contain **standardized manufactured components** with fixed, known dimensions. These objects serve as natural calibration references — the computational equivalent of a trained inspector mentally calibrating distance against the known 3.5-inch width of a 2×4.
 
-### Calibration Anchors
-
-| Material     | Known Dimensions (inches)         |
-|--------------|-----------------------------------|
-| CMU Block    | 7.625 × 7.625 × 15.625           |
-| Electrical Box | 2 × 3                           |
-| Brick        | 3.625 × 2.25 × 7.625             |
 
 ### Pipeline (5 Stages)
 
