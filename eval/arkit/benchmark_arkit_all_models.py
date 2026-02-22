@@ -421,6 +421,11 @@ def main():
     import os
     final_models = []
     for model_name in models_to_test:
+        # Skip models that don't exist in MODELS dict
+        if model_name not in MODELS:
+            print(f"⚠️  Skipping {model_name}: model not found in configuration")
+            continue
+
         model_config = MODELS[model_name]
 
         if model_config.get("requires_api"):
