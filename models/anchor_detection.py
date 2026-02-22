@@ -89,6 +89,7 @@ class AnchorDetector:
         results = self.model(image_path, conf=confidence_threshold, verbose=False)
 
         anchors = []
+        detected_objects = []  # For debugging
 
         # For now, we'll use generic YOLO detections and map them to construction anchors
         # In production, this would use a construction-specific model
@@ -100,6 +101,9 @@ class AnchorDetector:
                 confidence = float(box.conf[0])
                 class_id = int(box.cls[0])
                 class_name = result.names[class_id]
+
+                # Track what YOLO detected (for debugging)
+                detected_objects.append(class_name)
 
                 # Map generic YOLO classes to construction anchors
                 # This is a placeholder - in production, use construction-trained model
@@ -120,6 +124,14 @@ class AnchorDetector:
                         center=(center_x, center_y)
                     )
                     anchors.append(anchor)
+
+        # Debug output
+        if detected_objects:
+            print(f"  YOLO detected: {', '.join(set(detected_objects))} ({len(detected_objects)} total)")
+            if not anchors:
+                print(f"  ⚠️  No objects mapped to known-dimension anchors")
+        else:
+            print(f"  ⚠️  YOLO detected no objects in image")
 
         return anchors
 
