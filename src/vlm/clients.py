@@ -21,10 +21,10 @@ from src.vlm.prompts import (
     DEPTH_AUGMENTED_PROMPT_TEMPLATE,
     ELEMENT_DIMENSIONS_BLOCK,
     INSPECTION_SYSTEM_PROMPT,
-    STANDARDS_BLOCK,
     build_calibration_summary,
     build_chat_opening_prompt,
     build_reference_objects_block,
+    build_standards_block,
     format_measurements_block,
 )
 
@@ -250,7 +250,7 @@ def run_inspection(
             dimensions_block=ELEMENT_DIMENSIONS_BLOCK,
             calibration_summary=cal_summary,
             measurements_block=mblock,
-            standards_block=STANDARDS_BLOCK,
+            standards_block=build_standards_block(measurements),
             reference_objects_block=ref_block,
         )
         primary_image = image_path

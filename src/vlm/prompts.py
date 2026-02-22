@@ -62,24 +62,47 @@ Orientation note:
 # Construction standards reference
 # ---------------------------------------------------------------------------
 
-CONSTRUCTION_STANDARDS: dict[str, str] = {
-    "stud_spacing": "16 inches on center (tolerance: ±0.5 inches) per IRC R602",
-    "stud_spacing_24oc": "24 inches on center (tolerance: ±0.5 inches) for 2x6 walls",
-    "rebar_spacing": "12 inches on center (tolerance: ±0.75 inches) — verify per structural drawings",
-    "electrical_box_height": "12 inches to center from finished floor (tolerance: ±1 inch) per NEC",
-    "nail_plates": "Required on ALL stud penetrations within 1.5 inches of face per IRC R602.8",
-    "header_bearing": "Minimum 1.5 inches bearing on each side per IRC R602.7",
-    "cmu_joint_thickness": "3/8 inch mortar joints (tolerance: ±1/8 inch)",
-    "brick_dimensions": "Standard brick 7.625\" L × 3.625\" W × 2.25\" H; mortar joint 3/8\" nominal",
-    "brick_h_spacing": "Horizontal center-to-center: 8.0\" (brick + mortar joint, tolerance: ±0.25\")",
-    "brick_course_height": "Vertical course height: 2.625\" center-to-center (tolerance: ±0.25\")",
-    "cmu_dimensions": "Standard CMU 15.625\" L × 7.625\" H; mortar joint 3/8\" nominal",
-    "cmu_spacing": "Horizontal center-to-center: 16.0\" (CMU + mortar, tolerance: ±0.5\")",
+# Standards grouped by which anchor type triggers them.
+# Only standards for detected element types are shown to the VLM.
+_STANDARDS_BY_TYPE: dict[str, dict[str, str]] = {
+    "brick": {
+        "Brick Dimensions": "Standard brick 7.625\" L × 3.625\" W × 2.25\" H; mortar joint 3/8\" nominal",
+        "Brick Horizontal Spacing": "Center-to-center: 8.0\" (brick + mortar, tolerance: ±0.25\") per ASTM C216",
+        "Brick Course Height": "Vertical course: 2.625\" center-to-center (tolerance: ±0.25\")",
+        "Mortar Joint Thickness": "3/8 inch nominal (tolerance: ±1/8 inch)",
+        "Brick Alignment": "Courses must be level; vertical joints should align with every other course (running bond)",
+    },
+    "cmu": {
+        "CMU Dimensions": "Standard CMU 15.625\" L × 7.625\" H; mortar joint 3/8\" nominal per ASTM C90",
+        "CMU Horizontal Spacing": "Center-to-center: 16.0\" (CMU + mortar, tolerance: ±0.5\")",
+        "CMU Course Height": "Vertical course: 8.0\" center-to-center (tolerance: ±0.5\")",
+        "Mortar Joint Thickness": "3/8 inch nominal (tolerance: ±1/8 inch)",
+    },
+    "stud": {
+        "Stud Spacing": "16 inches on center (tolerance: ±0.5 inches) per IRC R602",
+        "Stud Spacing 2x6": "24 inches on center (tolerance: ±0.5 inches) for 2x6 walls",
+        "Nail Plates": "Required on ALL stud penetrations within 1.5 inches of face per IRC R602.8",
+        "Header Bearing": "Minimum 1.5 inches bearing on each side per IRC R602.7",
+    },
+    "rebar": {
+        "Rebar Spacing": "12 inches on center (tolerance: ±0.75 inches) — verify per structural drawings",
+    },
+    "electrical_box": {
+        "Electrical Box Height": "12 inches to center from finished floor (tolerance: ±1 inch) per NEC Article 314",
+    },
 }
 
-STANDARDS_BLOCK = "\n".join(
-    f"  {k.replace('_', ' ').title()}: {v}" for k, v in CONSTRUCTION_STANDARDS.items()
-)
+
+def build_standards_block(measurements: dict) -> str:
+    """Build a standards block containing only standards relevant to detected element types."""
+    detected = set(measurements.get("element_counts", {}).keys())
+    lines = []
+    for element_type, standards in _STANDARDS_BY_TYPE.items():
+        if element_type not in detected:
+            continue
+        for label, spec in standards.items():
+            lines.append(f"  {label}: {spec}")
+    return "\n".join(lines) if lines else "  No element-specific standards applicable."
 
 # ---------------------------------------------------------------------------
 # Condition 1 — Baseline (raw VLM, no augmentation)
@@ -212,12 +235,13 @@ def build_chat_opening_prompt(
     mblock = format_measurements_block(measurements)
     cal_summary = build_calibration_summary(measurements)
     ref_block = build_reference_objects_block(measurements)
+    standards = build_standards_block(measurements)
     return ANCHOR_CALIBRATED_PROMPT_TEMPLATE.format(
         question=question,
         dimensions_block=ELEMENT_DIMENSIONS_BLOCK,
         calibration_summary=cal_summary,
         measurements_block=mblock,
-        standards_block=STANDARDS_BLOCK,
+        standards_block=standards,
         reference_objects_block=ref_block,
     )
 
